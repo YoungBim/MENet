@@ -338,3 +338,9 @@ def depth_loss_nL1(task, pred, anots) :
     lmbd = tf.constant(100.0, tf.float32)
     loss = tf.divide(loss, lmbd, name=task + '_norm_loss')
     return loss
+
+# Naive L1 depth loss + L2 Regularization Term
+def depth_loss_nL1_Reg(task, pred, anots) :
+    loss = depth_loss_nL1(task, pred, anots)
+    loss = tf.add(loss ,compute_smooth_loss(pred))
+    return loss
