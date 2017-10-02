@@ -58,6 +58,12 @@ def main(_):
     np.random.seed(seed)
     random.seed(seed)
 
+    # TODO : remove this one day
+    files = os.listdir('./log/debug/')
+    for file in files:
+        if os.path.isfile(os.path.join('./log/debug/',file)):
+            os.remove(os.path.join('./log/debug/',file))
+
     pp = pprint.PrettyPrinter()
     pp.pprint(flags.FLAGS.__flags)
 
