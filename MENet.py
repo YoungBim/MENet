@@ -119,6 +119,7 @@ class MENet(object):
     # Function dedicated to compute the inference from the model given the images
     def MENet_Model(self, images):
         with slim.arg_scope(ENet_arg_scope(weight_decay=self.opt.weight_decay)):
+            # Define the shared encoder
             inputs_shapes = ENetEncoder(    images,
                                             batch_size=self.opt.batch_size,
                                             is_training=True,
@@ -127,22 +128,26 @@ class MENet(object):
                                             stage_two_repeat=self.opt.stage_two_repeat,
                                             skip_connections=self.opt.skip_connections)
 
-            logits, probabilities = ENetSegDecoder(  inputs_shapes,
-                                                     self.opt.num_classes,
-                                                     is_training=True,
-                                                     reuse=None,
-                                                     stage_two_repeat=self.opt.stage_two_repeat,
-                                                     skip_connections=self.opt.skip_connections)
-
-            disparity = ENetDepthDecoder(   inputs_shapes,
-                                            is_training=True,
-                                            reuse=None)
-
             # Collect tensors that are useful later (e.g. tf summary)
-            self.probabilities = probabilities
             self.predictions = {}
-            self.predictions[self.Tasks[0]] = tf.identity(logits, name = self.Tasks[0] + '_pred')
-            self.predictions[self.Tasks[1]] = tf.identity(disparity, name = self.Tasks[1] + '_pred')
+
+            # Define the decoder(s)
+            for task in self.Tasks:
+                if (task == 'segmentation'):
+                    logits, probabilities = ENetSegDecoder(  inputs_shapes,
+                                                             self.opt.num_classes,
+                                                             is_training=True,
+                                                             reuse=None,
+                                                             stage_two_repeat=self.opt.stage_two_repeat,
+                                                             skip_connections=self.opt.skip_connections)
+                    self.probabilities = probabilities
+                    self.predictions[task] = tf.identity(logits, name=task + '_pred')
+
+                elif (task == 'depth'):
+                    disparity = ENetDepthDecoder(   inputs_shapes,
+                                                    is_training=True,
+                                                    reuse=None)
+                    self.predictions[task] = tf.identity(disparity, name=task + '_pred')
 
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -184,8 +189,8 @@ class MENet(object):
             loss[task] = tf.identity(
                 tf.cond(has_smpl[task], lambda: self.compute_loss(task, pred[task], anots[task], n_smpl[task]),
                         lambda: tf.constant(0, dtype=tf.float32)), name=task + '_loss')
-            # loss[task] = tf.identity(tf.cond(has_smpl[task], lambda: tf.divide(loss[task],n_smpl[task]), lambda : tf.constant([0.0],dtype=tf.float32)), name = 'norm_loss_' + task)
-
+            loss[task] = tf.cond(has_smpl[task], lambda: tf.multiply(loss[task],n_smpl[task]), lambda : tf.constant([0.0],dtype=tf.float32))
+            loss[task] = tf.identity(tf.divide(loss[task],self.opt.batch_size), name = 'norm_loss_' + task)
         # Collect tensors that are useful later (e.g. tf summary)
         self.mask = mask
         self.n_smpl = n_smpl
@@ -193,7 +198,8 @@ class MENet(object):
         self.pred = pred
         self.anots = anots
         self.losses = loss
-        self.total_loss = tf.add(loss[self.Tasks[0]],loss[self.Tasks[1]])
+        losses = [tf.squeeze(loss[task]) for task in self.Tasks]
+        self.total_loss = tf.add_n(losses,name='total_loss')
 
     def Optimize(self):
         train_vars = [var for var in tf.trainable_variables()]
@@ -213,9 +219,7 @@ class MENet(object):
             staircase=False)
 
         optim = tf.train.AdamOptimizer(self.opt.learning_rate, self.opt.adam_momentum)
-        self.grads_and_vars = optim.compute_gradients(self.total_loss,
-                                                      var_list=train_vars)
-        self.train_op = optim.apply_gradients(self.grads_and_vars)
+        self.train_op = slim.learning.create_train_op(self.total_loss,optim)
 
 
     def build_train_graph(self):
@@ -273,12 +277,6 @@ class MENet(object):
                     # Save the images to be written later
                     self.images2write[task] = tf.squeeze(disp_pred,axis = [0, 3])
                     self.images2write_gt[task] = tf.squeeze(depth_gt_val,axis = [0, 3])
-
-
-                    #            tf.summary.image('Images/Validation_original_image', images_val, max_outputs=1)
-                    #            tf.summary.image('Images/Validation_segmentation_output', segmentation_output_val, max_outputs=1)
-                    #            tf.summary.image('Images/Validation_segmentation_ground_truth', segmentation_ground_truth_val, max_outputs=1)
-
 
     def save(self, sess, checkpoint_dir, step):
         model_name = 'model'
@@ -339,13 +337,14 @@ class MENet(object):
                     sv.summary_writer.add_summary(results["summary"], gs)
                     train_epoch = math.ceil(gs / self.opt.num_batches_per_epoch)
                     train_step = gs - (train_epoch - 1) * self.opt.num_batches_per_epoch
-                    print("Epoch: [%2d] [%5d/%5d] time: %4.4f/it loss: %.3f" \
+                    print("Epoch: [%2d] [%5d/%5d] time: %4.4f/it" \
                             % (train_epoch, train_step, self.opt.num_batches_per_epoch, \
-                                time.time() - start_time, results["loss"]))
+                                time.time() - start_time))
+
                     pt = "\t losses : "
                     for task in self.Tasks:
                         pt = pt + task + " : " + str(results["losses"][task]) + " | "
-                    print(pt)
+                    print(pt + "total : %.3f"%(results["loss"]))
 
                 if step % self.opt.save_model_freq == 0:
                     self.save(sess, self.opt.logdir, 'latest')
