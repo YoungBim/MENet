@@ -609,6 +609,8 @@ def ENetDepthDecoder(inputs_shapes,
             # =============FINAL CONVOLUTION=============
             disparity = slim.conv2d_transpose(netDepth, 1, [2, 2], stride=2, scope='disparity')
 
+            # Disparity is a positive quantity
+            disparity = tf.nn.relu(disparity)
 
         return disparity
 
