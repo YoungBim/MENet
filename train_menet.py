@@ -37,14 +37,14 @@ flags.DEFINE_float("adam_momentum", 1e-8, "Momentum term of adam (beta1)")
 flags.DEFINE_float('initial_learning_rate', 5e-4, 'The initial learning rate for your training.')
 
 # Define the desired tasks
-# Tasks = ["segmentation", "depth"]
-# TaskDirs = {Tasks[0]: 'seg', Tasks[1]: 'depth'}
-Tasks = ["segmentation"]
-TaskDirs = {Tasks[0]: 'seg'}
+Tasks = ["segmentation", "depth"]
+TaskDirs = {Tasks[0]: 'seg', Tasks[1]: 'depth'}
+#Tasks = ["segmentation"]
+#TaskDirs = {Tasks[0]: 'seg'}
 TaskLabel = {Tasks[i]: np.uint8(i) for i in range(len(Tasks))}
 
 # Debug/Summary related opts
-flags.DEFINE_integer("summary_freq", 1, "Logging every log_freq iterations")
+flags.DEFINE_integer("summary_freq", 25, "Logging every log_freq iterations")
 flags.DEFINE_integer("save_model_freq", 300, "Logging every log_freq iterations")
 flags.DEFINE_integer("max_model_saved", 5, "Maximum number of model saved")
 flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt images with the model")

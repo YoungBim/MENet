@@ -327,24 +327,28 @@ class MENet(object):
 
             for step in xrange(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
                 start_time = time.time()
+
+                # Define the fetches
                 fetches = {
                     "train": self.train_op,
                     "global_step": self.global_step,
                     "incr_global_step": self.incr_global_step
                 }
 
+                # Define the Summary/Save/Display related fetches
                 if step % self.opt.summary_freq == 0:
                     fetches["loss"] = self.total_loss
                     fetches["losses"] = self.losses
                     fetches["summary"] = sv.summary_op
-
                 if self.opt.save_images and step % self.opt.save_model_freq == 0:
                     fetches["images2write"] = self.images2write
                     fetches["images2write_gt"] = self.images2write_gt
 
+                # Run the network with the fetches
                 results = sess.run(fetches)
                 gs = results["global_step"]
-                print('global step', gs, "loss", results["train"])
+
+                # Summary/Save/Display related stuff
                 if step % self.opt.summary_freq == 0:
                     sv.summary_writer.add_summary(results["summary"], gs)
                     train_epoch = math.ceil(gs / self.opt.num_batches_per_epoch)
@@ -352,7 +356,6 @@ class MENet(object):
                     print("Epoch: [%2d] [%5d/%5d] time: %4.4f/it" \
                             % (train_epoch, train_step, self.opt.num_batches_per_epoch, \
                                 time.time() - start_time))
-
                     pt = "\t losses : "
                     for task in self.Tasks:
                         pt = pt + task + " : " + str(results["losses"][task]) + " | "
