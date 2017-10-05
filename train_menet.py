@@ -11,7 +11,6 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1"
 ## https://github.com/tensorflow/tensorflow/issues/7778
 os.environ['TF_CPP_MIN_LOG_LEVEL']='1'
 
-Mode = 'Xdebug'
 
 #==============INPUT ARGUMENTS==================
 logdirectory = "./log/"
@@ -23,10 +22,13 @@ flags = tf.app.flags
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('logdir', logdirectory + 'debug', 'The log directory to save your checkpoint and event files.')
 
-#Training opts
+#General params
 flags.DEFINE_integer('batch_size', 10, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
+flags.DEFINE_boolean("debug", False, "Activates tfdbg")
+
+#Training opts
 flags.DEFINE_integer('num_epochs', 300, "The number of epochs to train your model.")
 flags.DEFINE_integer('num_epochs_before_decay', 100, 'The number of epochs before decaying your learning rate.')
 flags.DEFINE_float('weight_decay', 2e-4, "The weight decay for ENet convolution layers.")
@@ -35,12 +37,14 @@ flags.DEFINE_float("adam_momentum", 1e-8, "Momentum term of adam (beta1)")
 flags.DEFINE_float('initial_learning_rate', 5e-4, 'The initial learning rate for your training.')
 
 # Define the desired tasks
-Tasks = ["segmentation", "depth"]
-TaskDirs = {Tasks[0]: 'seg', Tasks[1]: 'depth'}
+# Tasks = ["segmentation", "depth"]
+# TaskDirs = {Tasks[0]: 'seg', Tasks[1]: 'depth'}
+Tasks = ["segmentation"]
+TaskDirs = {Tasks[0]: 'seg'}
 TaskLabel = {Tasks[i]: np.uint8(i) for i in range(len(Tasks))}
 
 # Debug/Summary related opts
-flags.DEFINE_integer("summary_freq", 50, "Logging every log_freq iterations")
+flags.DEFINE_integer("summary_freq", 1, "Logging every log_freq iterations")
 flags.DEFINE_integer("save_model_freq", 300, "Logging every log_freq iterations")
 flags.DEFINE_integer("max_model_saved", 5, "Maximum number of model saved")
 flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt images with the model")
@@ -48,7 +52,7 @@ flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt 
 # Architectural changes
 flags.DEFINE_integer('num_initial_blocks', 1, 'The number of initial blocks to use in ENet.')
 flags.DEFINE_integer('stage_two_repeat', 2, 'The number of times to repeat stage two.')
-flags.DEFINE_boolean('skip_connections', True, 'If True, perform skip connections from encoder to decoder.')
+flags.DEFINE_boolean('skip_connections', False, 'If True, perform skip connections from encoder to decoder.')
 
 # Segmentation-Task related
 flags.DEFINE_integer('num_classes', 12, 'The number of classes to predict.')
