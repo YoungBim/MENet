@@ -418,70 +418,64 @@ def ENetEncoder(inputs,
         with slim.arg_scope([initial_block, bottleneck], is_training=is_training), \
              slim.arg_scope([slim.batch_norm], fused=True), \
              slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=None):
-            with tf.name_scope("Encoder"):
-                # =================INITIAL BLOCK=================
-                for i in xrange(1, max(num_initial_blocks, 1) + 1):
-                    feats = initial_block(inputs, scope='initial_block_' + str(i))
+            # =================INITIAL BLOCK=================
+            for i in xrange(1, max(num_initial_blocks, 1) + 1):
+                feats = initial_block(inputs, scope='initial_block_' + str(i))
 
-                # Save for skip connection later
-                if skip_connections:
-                    feats_one = feats
-                else:
-                    feats_one = []
+            # Save for skip connection later
+            if skip_connections:
+                feats_one = feats
+            else:
+                feats_one = []
 
-                # ===================STAGE ONE=======================
-                feats, pooling_indices_1, inputs_shape_1 = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, downsampling=True, scope='bottleneck1_0')
-                feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_1')
-                feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_2')
-                feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_3')
-                feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_4')
+            # ===================STAGE ONE=======================
+            feats, pooling_indices_1, inputs_shape_1 = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, downsampling=True, scope='bottleneck1_0')
+            feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_1')
+            feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_2')
+            feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_3')
+            feats = bottleneck(feats, output_depth=64, filter_size=3, regularizer_prob=0.01, scope='bottleneck1_4')
 
-                # Save for skip connection later
-                if skip_connections:
-                    feats_two = feats
-                else:
-                    feats_two = []
+            # Save for skip connection later
+            if skip_connections:
+                feats_two = feats
+            else:
+                feats_two = []
 
-                # ===================STAGE TWO (AND THREE)=======================
-                # regularization prob is 0.1 from bottleneck 2.0 onwards
-                with slim.arg_scope([bottleneck], regularizer_prob=0.1):
-                    feats, pooling_indices_2, inputs_shape_2 = bottleneck(feats, output_depth=128, filter_size=3,
-                                                                        downsampling=True, scope='bottleneck2_0')
+            # ===================STAGE TWO (AND THREE)=======================
+            # regularization prob is 0.1 from bottleneck 2.0 onwards
+            with slim.arg_scope([bottleneck], regularizer_prob=0.1):
+                feats, pooling_indices_2, inputs_shape_2 = bottleneck(feats, output_depth=128, filter_size=3,
+                                                                    downsampling=True, scope='bottleneck2_0')
 
-                    # Repeat the stage two at least twice to get stage 2 and 3:
-                    for i in xrange(2, max(stage_two_repeat, 2) + 2):
-                        feats = bottleneck(feats, output_depth=128, filter_size=3, scope='bottleneck' + str(i) + '_1')
-                        feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope='bottleneck' + str(i) + '_2')
-                        feats = bottleneck(feats, output_depth=128, filter_size=5, asymmetric=True, scope='bottleneck' + str(i) + '_3')
-                        feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=4, scope='bottleneck' + str(i) + '_4')
-                        feats = bottleneck(feats, output_depth=128, filter_size=3, scope='bottleneck' + str(i) + '_5')
-                        feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=8, scope='bottleneck' + str(i) + '_6')
-                        feats = bottleneck(feats, output_depth=128, filter_size=5, asymmetric=True, scope='bottleneck' + str(i) + '_7')
-                        feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=16, scope='bottleneck' + str(i) + '_8')
+                # Repeat the stage two at least twice to get stage 2 and 3:
+                for i in xrange(2, max(stage_two_repeat, 2) + 2):
+                    feats = bottleneck(feats, output_depth=128, filter_size=3, scope='bottleneck' + str(i) + '_1')
+                    feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope='bottleneck' + str(i) + '_2')
+                    feats = bottleneck(feats, output_depth=128, filter_size=5, asymmetric=True, scope='bottleneck' + str(i) + '_3')
+                    feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=4, scope='bottleneck' + str(i) + '_4')
+                    feats = bottleneck(feats, output_depth=128, filter_size=3, scope='bottleneck' + str(i) + '_5')
+                    feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=8, scope='bottleneck' + str(i) + '_6')
+                    feats = bottleneck(feats, output_depth=128, filter_size=5, asymmetric=True, scope='bottleneck' + str(i) + '_7')
+                    feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=16, scope='bottleneck' + str(i) + '_8')
 
-            with tf.name_scope("PassVars"):
-                # =================== PASS VARIABLES =======================
-                # Define the set of variables that the encoder should share with other layers.
-                features = tf.get_variable("feats", feats.shape)
-                tf.assign(features, feats)
+            # =================== PASS VARIABLES =======================
+            # Define the set of variables that the encoder should share with other layers.
+            Encoder = {}
+            Encoder['features'] = tf.identity(feats,name='Encoder_feats')
+            Encoder['inputs_shape_1'] = inputs_shape_1
+            Encoder['inputs_shape_2'] = inputs_shape_2
+            Encoder['pooling_indices_1'] = tf.identity(pooling_indices_1,name='Encoder_pooling_indices_1')
+            Encoder['pooling_indices_2'] = tf.identity(pooling_indices_2,name='Encoder_pooling_indices_2')
 
-                features1 = tf.get_variable("feats_one", feats_one.shape)
-                tf.assign(features1, feats_one)
+            if skip_connections:
+                Encoder['feats_one'] = tf.identity(feats_one,name='Encoder_feats_one')
+                Encoder['feats_two'] = tf.identity(feats_two,name='Encoder_feats_two')
 
-                features2 = tf.get_variable("feats_two", feats_two.shape)
-                tf.assign(features2, feats_two)
-
-                poolind1 = tf.get_variable("pooling_indices_1", pooling_indices_1.shape, pooling_indices_1.dtype)
-                tf.assign(poolind1, pooling_indices_1)
-
-                poolind2 = tf.get_variable("pooling_indices_2", pooling_indices_2.shape, pooling_indices_2.dtype)
-                tf.assign(poolind2, pooling_indices_2)
-
-            return inputs_shape_1, inputs_shape_2
+            return Encoder
 
 
 #Now actually start building the network
-def ENetSegDecoder(inputs_shapes,
+def ENetSegDecoder(Encoder,
          num_classes,
          stage_two_repeat=2,
          skip_connections=True,
@@ -506,17 +500,7 @@ def ENetSegDecoder(inputs_shapes,
     - net(Tensor): a 4D Tensor output of shape [batch_size, image_height, image_width, num_classes], where each pixel has a one-hot encoded vector
                       determining the label of the pixel.
     '''
-    # Load the encoder features
-    with tf.variable_scope('Mult-ENet-Encoder', reuse=True):
-        feats               = tf.get_variable("feats", dtype=tf.float32)
-        feats_one           = tf.get_variable("feats_one", dtype=tf.float32)
-        feats_two           = tf.get_variable("feats_two", dtype=tf.float32)
-        pooling_indices_1   = tf.get_variable("pooling_indices_1", dtype=tf.int64)
-        pooling_indices_2   = tf.get_variable("pooling_indices_2", dtype=tf.int64)
-    inputs_shape_1 = inputs_shapes[0]
-    inputs_shape_2 = inputs_shapes[1]
     bottleneck_num = xrange(2, max(stage_two_repeat, 2) + 2)[-1]
-
     with tf.variable_scope(scope, reuse=reuse):
         #Set the primary arg scopes. Fused batch_norm is faster than normal batch norm.
         with slim.arg_scope([initial_block, bottleneck], is_training=is_training),\
@@ -528,12 +512,12 @@ def ENetSegDecoder(inputs_shapes,
                     bottleneck_scope_name = "bottleneck" + str(bottleneck_num + 1)
 
                     #The decoder section, so start to upsample.
-                    netSeg = bottleneck(feats, output_depth=64, filter_size=3, upsampling=True,
-                                     pooling_indices=pooling_indices_2, output_shape=inputs_shape_2, scope=bottleneck_scope_name+'_0')
+                    netSeg = bottleneck(Encoder['features'], output_depth=64, filter_size=3, upsampling=True,
+                                     pooling_indices=Encoder['pooling_indices_2'], output_shape=Encoder['inputs_shape_2'], scope=bottleneck_scope_name+'_0')
 
                     #Perform skip connections here
                     if skip_connections:
-                        netSeg = tf.add(netSeg, feats_two, name=bottleneck_scope_name+'_skip_connection')
+                        netSeg = tf.add(netSeg, Encoder['feats_two'], name=bottleneck_scope_name+'_skip_connection')
 
                     netSeg = bottleneck(netSeg, output_depth=64, filter_size=3, scope=bottleneck_scope_name+'_1')
                     netSeg = bottleneck(netSeg, output_depth=64, filter_size=3, scope=bottleneck_scope_name+'_2')
@@ -542,11 +526,11 @@ def ENetSegDecoder(inputs_shapes,
                     bottleneck_scope_name = "bottleneck" + str(bottleneck_num + 2)
 
                     netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, upsampling=True,
-                                     pooling_indices=pooling_indices_1, output_shape=inputs_shape_1, scope=bottleneck_scope_name+'_0')
+                                     pooling_indices=Encoder['pooling_indices_1'], output_shape=Encoder['inputs_shape_1'], scope=bottleneck_scope_name+'_0')
 
                     #perform skip connections here
                     if skip_connections:
-                        netSeg = tf.add(netSeg, feats_one, name=bottleneck_scope_name+'_skip_connection')
+                        netSeg = tf.add(netSeg, Encoder['feats_one'], name=bottleneck_scope_name+'_skip_connection')
 
                     netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, scope=bottleneck_scope_name+'_1')
 
@@ -557,20 +541,11 @@ def ENetSegDecoder(inputs_shapes,
         return logits, probabilities
 
 #Now actually start building the network
-def ENetDepthDecoder(inputs_shapes,
+def ENetDepthDecoder(Encoder,
+         skip_connections=True,
          reuse=None,
          is_training=True,
          scope='Mult-ENet-DepthDecoder'):
-
-    # Load the encoder features
-    with tf.variable_scope('Mult-ENet-Encoder', reuse=True):
-        feats = tf.get_variable("feats", dtype=tf.float32)
-        feats_one = tf.get_variable("feats_one", dtype=tf.float32)
-        feats_two = tf.get_variable("feats_two", dtype=tf.float32)
-        pooling_indices_1 = tf.get_variable("pooling_indices_1", dtype=tf.int64)
-        pooling_indices_2 = tf.get_variable("pooling_indices_2", dtype=tf.int64)
-    inputs_shape_1 = inputs_shapes[0]
-    inputs_shape_2 = inputs_shapes[1]
 
     with tf.variable_scope(scope, reuse=reuse):
         bottleneck_num = 0
@@ -584,12 +559,13 @@ def ENetDepthDecoder(inputs_shapes,
                 bottleneck_scope_name = "depth" + str(bottleneck_num + 1)
 
                 # The decoder section, so start to upsample.
-                netDepth = bottleneck(feats, output_depth=64, filter_size=3, upsampling=True,
-                                    pooling_indices=pooling_indices_2, output_shape=inputs_shape_2,
+                netDepth = bottleneck(Encoder['features'], output_depth=64, filter_size=3, upsampling=True,
+                                    pooling_indices=Encoder['pooling_indices_2'], output_shape=Encoder['inputs_shape_2'],
                                     scope=bottleneck_scope_name + '_0')
 
                 # Perform skip connections here
-                netDepth = tf.add(netDepth, feats_two, name=bottleneck_scope_name + '_skip_connection')
+                if skip_connections:
+                    netDepth = tf.add(netDepth, Encoder['feats_two'], name=bottleneck_scope_name + '_skip_connection')
 
                 netDepth = bottleneck(netDepth, output_depth=64, filter_size=3, scope=bottleneck_scope_name + '_1')
                 netDepth = bottleneck(netDepth, output_depth=64, filter_size=3, scope=bottleneck_scope_name + '_2')
@@ -598,11 +574,12 @@ def ENetDepthDecoder(inputs_shapes,
                 bottleneck_scope_name = "depth" + str(bottleneck_num + 2)
 
                 netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, upsampling=True,
-                                    pooling_indices=pooling_indices_1, output_shape=inputs_shape_1,
+                                    pooling_indices=Encoder['pooling_indices_1'], output_shape=Encoder['inputs_shape_1'],
                                     scope=bottleneck_scope_name + '_0')
 
                 # perform skip connections here
-                netDepth = tf.add(netDepth, feats_one, name=bottleneck_scope_name + '_skip_connection')
+                if skip_connections:
+                    netDepth = tf.add(netDepth, Encoder['feats_one'], name=bottleneck_scope_name + '_skip_connection')
 
                 netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, scope=bottleneck_scope_name + '_1')
 
