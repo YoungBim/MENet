@@ -4,6 +4,7 @@ import time
 import math
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 from PIL import Image
 slim = tf.contrib.slim
 
@@ -61,6 +62,13 @@ class MENet(object):
                 os.path.join(dataset_gt_path, item.split('/')[-2], item.split('/')[-1])
                 for item in image_files[task]
             ])
+
+            image_files[task] = sorted(image_files[task])
+            annotation_files[task] = sorted(annotation_files[task])
+
+        # TODO : remove this
+        image_files[task] = [image_files[task][i] for i in range(25,35,1)]
+        annotation_files[task] = [annotation_files[task][i] for i in range(25,35,1)]
 
         # Know the number steps to take before decaying the learning rate and batches per epoch
         num_batches_per_epoch = 0
@@ -186,11 +194,10 @@ class MENet(object):
             # Filter the task dedicated predictions
             pred[task] = tf.boolean_mask(self.predictions[task], mask[task], name=task + '_pred_mask')
             # Compute the loss associated to each task
-            loss[task] = tf.identity(
-                tf.cond(has_smpl[task], lambda: self.compute_loss(task, pred[task], anots[task], n_smpl[task]),
-                        lambda: tf.constant(0, dtype=tf.float32)), name=task + '_loss')
-            loss[task] = tf.cond(has_smpl[task], lambda: tf.multiply(loss[task],n_smpl[task]), lambda : tf.constant([0.0],dtype=tf.float32))
-            loss[task] = tf.identity(tf.divide(loss[task],self.opt.batch_size), name = 'norm_loss_' + task)
+            loss[task] = tf.cond(has_smpl[task], lambda: self.compute_loss(task, pred[task], anots[task], n_smpl[task]),
+                        lambda: tf.constant(0, dtype=tf.float32), name=task + '_loss')
+            #loss[task] = tf.multiply(loss[task],n_smpl[task])
+            #loss[task] = tf.identity(tf.divide(loss[task],self.opt.batch_size), name = 'norm_loss_' + task)
         # Collect tensors that are useful later (e.g. tf summary)
         self.mask = mask
         self.n_smpl = n_smpl
@@ -202,8 +209,6 @@ class MENet(object):
         self.total_loss = tf.add_n(losses,name='total_loss')
 
     def Optimize(self):
-        train_vars = [var for var in tf.trainable_variables()]
-
         self.global_step = tf.Variable(0,
                                        name='global_step',
                                        trainable=False)
@@ -216,7 +221,7 @@ class MENet(object):
             global_step=self.global_step,
             decay_steps=self.opt.decay_steps,
             decay_rate=self.opt.learning_rate_decay_factor,
-            staircase=False)
+            staircase=True)
 
         optim = tf.train.AdamOptimizer(self.opt.learning_rate, self.opt.adam_momentum)
         self.train_op = slim.learning.create_train_op(self.total_loss,optim)
@@ -224,8 +229,9 @@ class MENet(object):
 
     def build_train_graph(self):
         opt = self.opt
+        image_files, annotation_files = self.prepare_Data()
+
         with tf.name_scope("Data"):
-            image_files, annotation_files = self.prepare_Data()
             images, annotations, tasks = self.load_Data(image_files, annotation_files)
 
         with tf.name_scope("Model"):
@@ -308,6 +314,11 @@ class MENet(object):
         config.gpu_options.allow_growth = True
 
         with sv.managed_session(config=config) as sess:
+
+            # Activate debug when mode enabled
+            if (self.opt.debug):
+                sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+
             print('Trainable variables: ')
             for var in tf.trainable_variables():
                 print(var.name)
@@ -332,7 +343,7 @@ class MENet(object):
 
                 results = sess.run(fetches)
                 gs = results["global_step"]
-
+                print('global step', gs, "loss", results["train"])
                 if step % self.opt.summary_freq == 0:
                     sv.summary_writer.add_summary(results["summary"], gs)
                     train_epoch = math.ceil(gs / self.opt.num_batches_per_epoch)
