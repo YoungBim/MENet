@@ -66,9 +66,9 @@ class MENet(object):
             image_files[task] = sorted(image_files[task])
             annotation_files[task] = sorted(annotation_files[task])
 
-        # TODO : remove this
-        image_files[task] = [image_files[task][i] for i in range(25,35,1)]
-        annotation_files[task] = [annotation_files[task][i] for i in range(25,35,1)]
+            # TODO : remove this
+            # image_files[task] = [image_files[task][i] for i in range(25,35,1)]
+            # annotation_files[task] = [annotation_files[task][i] for i in range(25,35,1)]
 
         # Know the number steps to take before decaying the learning rate and batches per epoch
         num_batches_per_epoch = 0
@@ -128,7 +128,7 @@ class MENet(object):
     def MENet_Model(self, images):
         with slim.arg_scope(ENet_arg_scope(weight_decay=self.opt.weight_decay)):
             # Define the shared encoder
-            inputs_shapes = ENetEncoder(    images,
+            Encoder = ENetEncoder(    images,
                                             batch_size=self.opt.batch_size,
                                             is_training=True,
                                             reuse=None,
@@ -142,7 +142,7 @@ class MENet(object):
             # Define the decoder(s)
             for task in self.Tasks:
                 if (task == 'segmentation'):
-                    logits, probabilities = ENetSegDecoder(  inputs_shapes,
+                    logits, probabilities = ENetSegDecoder(  Encoder,
                                                              self.opt.num_classes,
                                                              is_training=True,
                                                              reuse=None,
@@ -152,7 +152,8 @@ class MENet(object):
                     self.predictions[task] = tf.identity(logits, name=task + '_pred')
 
                 elif (task == 'depth'):
-                    disparity = ENetDepthDecoder(   inputs_shapes,
+                    disparity = ENetDepthDecoder(   Encoder,
+                                                    skip_connections=self.opt.skip_connections,
                                                     is_training=True,
                                                     reuse=None)
                     self.predictions[task] = tf.identity(disparity, name=task + '_pred')
