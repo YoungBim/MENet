@@ -1,0 +1,14 @@
+NoteBoard on MENET
+
+-----------------------------
+Segmentation Branch SOLELY
+
+@Train : loss = 0.02 after500 iters (batch 10)
+@Train : runtime ~ 14FPS (fwd+bwd, batch 10)
+
+-----------------------------
+Segmentation + Depth Branches
+
+@Train : loss = 2E-2 @50k iters (batch 10)
+@Train : depthloss = 1.5E-2 | segloss = 5E-3 @50k its
+@Train : runtime ~ 1.2 FPS (fwd+bwd, batch 10)
