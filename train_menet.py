@@ -13,23 +13,23 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='1'
 
 
 #==============INPUT ARGUMENTS==================
-logdirectory = "./log/"
-datasetdirectory = "./dataset/"
+logdirectory = "./leg/"
+datasetdirectory = "./datasit/"
 
 flags = tf.app.flags
 
 #Directory opts
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
-flags.DEFINE_string('logdir', logdirectory + 'debug', 'The log directory to save your checkpoint and event files.')
+flags.DEFINE_string('logdir', logdirectory + 'custom', 'The log directory to save your checkpoint and event files.')
 
 #General params
-flags.DEFINE_integer('batch_size', 10, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 6, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
 
 #Training opts
-flags.DEFINE_integer('num_epochs', 300, "The number of epochs to train your model.")
+flags.DEFINE_integer('num_epochs', 500, "The number of epochs to train your model.")
 flags.DEFINE_integer('num_epochs_before_decay', 100, 'The number of epochs before decaying your learning rate.')
 flags.DEFINE_float('weight_decay', 2e-4, "The weight decay for ENet convolution layers.")
 flags.DEFINE_float('learning_rate_decay_factor', 1e-1, 'The learning rate decay factor.')
@@ -44,8 +44,8 @@ TaskDirs = {Tasks[0]: 'seg', Tasks[1]: 'depth'}
 TaskLabel = {Tasks[i]: np.uint8(i) for i in range(len(Tasks))}
 
 # Debug/Summary related opts
-flags.DEFINE_integer("summary_freq", 25, "Logging every log_freq iterations")
-flags.DEFINE_integer("save_model_freq", 300, "Logging every log_freq iterations")
+flags.DEFINE_integer("summary_freq", 100, "Logging every log_freq iterations")
+flags.DEFINE_integer("save_model_freq", 500, "Logging every log_freq iterations")
 flags.DEFINE_integer("max_model_saved", 5, "Maximum number of model saved")
 flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt images with the model")
 
@@ -67,11 +67,11 @@ def main(_):
     np.random.seed(seed)
     random.seed(seed)
 
-    # TODO : remove this one day
-    files = os.listdir('./log/debug/')
-    for file in files:
-        if os.path.isfile(os.path.join('./log/debug/',file)):
-            os.remove(os.path.join('./log/debug/',file))
+    ## TODO : remove this one day
+    #files = os.listdir('./log/debug/')
+    #for file in files:
+    #    if os.path.isfile(os.path.join('./log/debug/',file)):
+    #        os.remove(os.path.join('./log/debug/',file))
 
     pp = pprint.PrettyPrinter()
     pp.pprint(flags.FLAGS.__flags)
