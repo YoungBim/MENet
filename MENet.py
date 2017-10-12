@@ -22,9 +22,16 @@ class MENet(object):
         self.Tasks = Tasks
         self.TaskDirs = TaskDirs
         self.TaskLabel = TaskLabel
-        # ==========NAME HANDLING FOR CONVENIENCE==============
+
+        self.Mode = tf.placeholder(dtype=tf.uint8,name='Mode')
+        self.ModeTrain = np.uint8(0)
+        self.ModeValid = np.uint8(1)
+
         self.opt = FLAGS
         assert (len(self.TaskDirs.values()) == len(self.Tasks))
+        self.ImagesDirectory = os.path.join(self.opt.logdir,'Images/')
+        self.SessionConfig = tf.ConfigProto()
+        self.SessionConfig.gpu_options.allow_growth = True
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to the data preparation (i.e. pure python preprocessing)
@@ -32,30 +39,26 @@ class MENet(object):
         # ===============PREPARATION FOR TRAINING==================
         image_files = {}
         annotation_files = {}
-        SubDataSets = {}
-        Supervised = {}
+        image_files_val = {}
+        annotation_files_val = {}
 
         for task in self.Tasks:  # For each task of the network
             # Seek for the full list of raw images
             dataset_raw_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_raw")
             dataset_gt_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_gt")
             pngfiles = np.array([os.path.join(root, name)
-                                 for root, _, files in os.walk(dataset_raw_path)
+                                 for root, _, files in os.walk(dataset_raw_path,followlinks=True)
                                  for name in files
                                  if name.endswith(".png")])
 
-            # Get the list of the sub datasets per task
-            subdataset = np.array([pngfiles[i].split('/')[-2] for i in range(len(pngfiles))])
-            SubDataSets[task] = subdataset[np.insert(subdataset[:-1] != subdataset[1:], 0, True)].tolist()
-
             # Check the existence of the GT file (i.e. is that an unsupervised sample or a supervised one ?!)
-            Supervised[task] = np.array(
+            Supervised = np.array(
                 [os.path.isfile(os.path.join(dataset_gt_path, filename.split('/')[-2], filename.split('/')[-1]))
                  for filename in pngfiles
                  ])
 
             # Remove all samples that are unsupervised
-            image_files[task] = pngfiles[Supervised[task]]
+            image_files[task] = pngfiles[Supervised]
 
             # Generate the set of annotation path accordingly
             annotation_files[task] = np.array([
@@ -63,12 +66,17 @@ class MENet(object):
                 for item in image_files[task]
             ])
 
+            # Split the dataset into train and validation sets
+            isValidation = np.random.rand(len(image_files[task])) < self.opt.validation_rate
+            image_files_val[task] = image_files[task][isValidation]
+            image_files[task] = image_files[task][np.logical_not(isValidation)]
+            annotation_files_val[task] = annotation_files[task][isValidation]
+            annotation_files[task] = annotation_files[task][np.logical_not(isValidation)]
+
+        # Reorder the files by name (just for style)
+        for task in self.Tasks:
             image_files[task] = sorted(image_files[task])
             annotation_files[task] = sorted(annotation_files[task])
-
-            # TODO : remove this
-            # image_files[task] = [image_files[task][i] for i in range(25,35,1)]
-            # annotation_files[task] = [annotation_files[task][i] for i in range(25,35,1)]
 
         # Know the number steps to take before decaying the learning rate and batches per epoch
         num_batches_per_epoch = 0
@@ -87,7 +95,7 @@ class MENet(object):
         elif self.opt.weighting == "ENET":
             self.class_weights = ENet_weighing(annotation_files["segmentation"])
 
-        return image_files, annotation_files
+        return image_files, annotation_files, image_files_val, annotation_files_val
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to queue data loading (batches)
@@ -120,6 +128,7 @@ class MENet(object):
 
             self.batch_images, self.batch_annotations, self.batch_tasks = tf.train.batch([preprocessed_image, preprocessed_annotation, task],
                                                         batch_size=self.opt.batch_size, allow_smaller_final_batch=True)
+
 
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -231,10 +240,17 @@ class MENet(object):
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
     def build_train_graph(self):
-        opt = self.opt
-        image_files, annotation_files = self.prepare_Data()
+
+        image_files, annotation_files, image_files_val, annotation_files_val = self.prepare_Data()
 
         with tf.name_scope("Data"):
+            #def loadTrain() : return self.load_Data(image_files, annotation_files)
+            #def loadValid() : return self.load_Data(image_files_val,annotation_files_val)
+            #def loadNothing() : return tf.no_op, tf.no_op, tf.no_op
+            #self.batch_images, self.batch_annotations, self.batch_tasks = tf.case({
+            # tf.equal(self.Mode, self.ModeTrain, name='ModeIsTrain') : loadTrain,
+            # tf.equal(self.Mode, self.ModeValid, name='ModeIsValid') : loadValid,
+            #}, default= loadTrain)
             self.load_Data(image_files, annotation_files)
 
         with tf.name_scope("Model"):
@@ -344,31 +360,38 @@ class MENet(object):
     def train(self):
 
         self.build_train_graph()
+
         self.collect_summaries()
 
-        with tf.name_scope("parameter_count"):
-            parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) \
-                                            for v in tf.trainable_variables()])
-            self.saver = tf.train.Saver([var for var in tf.trainable_variables()] + \
+        # Count the number of trainable scalars / variables in the model
+        self.modelNumDOF = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
+        self.modelNumVars = len(tf.trainable_variables())
+
+        # Define the saver
+        self.saver = tf.train.Saver([var for var in tf.trainable_variables()] + \
                                     [self.global_step],
                                     save_relative_paths=True,
                                     max_to_keep=self.opt.max_model_saved)
+
+        # Define the session superviser
         sv = tf.train.Supervisor(logdir=self.opt.logdir,
                                  save_summaries_secs=0,
                                  saver=None)
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
 
-        with sv.managed_session(config=config) as sess:
+        # Actually runs the session
+        with sv.managed_session(config=self.SessionConfig) as sess:
+
+            print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF)) + ") " + str(self.modelNumVars) )
+
+            # If found a remaining ckpt restore from this point
+            if(os.path.isfile(self.opt.logdir + "/model.latest.meta")):
+                print('Restoring from the latest Checkpoint')
+                self.saver.restore(sess, self.opt.logdir + "model.latest")
+                print('Done')
 
             # Activate debug when mode enabled
             if (self.opt.debug):
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-
-            print('Trainable variables: ')
-            for var in tf.trainable_variables():
-                print(var.name)
-            print("parameter_count =", sess.run(parameter_count))
 
             for step in xrange(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
                 start_time = time.time()
@@ -380,6 +403,9 @@ class MENet(object):
                     "incr_global_step": self.incr_global_step
                 }
 
+                # Define the feedict (solely for the MODE)
+                feeddict = {self.Mode : self.ModeTrain}
+
                 # Define the Summary/Save/Display related fetches
                 if step % self.opt.summary_freq == 0:
                     fetches["loss"] = self.total_loss
@@ -389,7 +415,7 @@ class MENet(object):
                     fetches["images2write"] = self.images2write
 
                 # Run the network with the fetches
-                results = sess.run(fetches)
+                results = sess.run(fetches,feed_dict=feeddict)
                 gs = results["global_step"]
 
                 # Summary/Save/Display related stuff
@@ -409,13 +435,17 @@ class MENet(object):
                     self.save(sess, self.opt.logdir, 'latest')
                     self.save(sess, self.opt.logdir, gs)
                     if self.opt.save_images:
+
+                        # Check if the Images folder is setup
+                        if not os.path.exists(self.opt.ImagesDirectory):
+                            os.makedirs(self.opt.ImagesDirectory)
                         # Write images prediction vs GT
                         im2write = results["images2write"]
                         for name, img_tens in im2write.iteritems():
                             if len(img_tens.shape)>2:
                                 if img_tens.shape[2] == 3:
                                     img = Image.fromarray(np.uint8(255.0 * img_tens))
-                                    img.save(os.path.join(self.opt.logdir, str(gs) + "_" + name + ".jpeg"))
+                                    img.save(os.path.join(self.opt.ImagesDirectory, str(gs) + "_" + name + ".jpeg"))
                                     continue
 
                             # The predicted images must be converted

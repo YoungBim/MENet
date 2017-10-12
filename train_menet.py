@@ -13,17 +13,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='1'
 
 
 #==============INPUT ARGUMENTS==================
-logdirectory = "./leg/"
-datasetdirectory = "./datasit/"
+logdirectory = "./log/debug/"
+datasetdirectory = "./dataset/"
 
 flags = tf.app.flags
 
 #Directory opts
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
-flags.DEFINE_string('logdir', logdirectory + 'custom', 'The log directory to save your checkpoint and event files.')
+flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
 
 #General params
-flags.DEFINE_integer('batch_size', 6, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 10, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
@@ -35,6 +35,7 @@ flags.DEFINE_float('weight_decay', 2e-4, "The weight decay for ENet convolution 
 flags.DEFINE_float('learning_rate_decay_factor', 1e-1, 'The learning rate decay factor.')
 flags.DEFINE_float("adam_momentum", 1e-8, "Momentum term of adam (beta1)")
 flags.DEFINE_float('initial_learning_rate', 5e-4, 'The initial learning rate for your training.')
+flags.DEFINE_integer('validation_rate', 0.10, 'Percentage of the files dedicated to the validation during train.')
 
 # Define the desired tasks
 Tasks = ["segmentation", "depth"]
@@ -62,7 +63,7 @@ flags.DEFINE_string('weighting', "MFB", 'Choice of Median Frequency Balancing or
 FLAGS = flags.FLAGS
 
 def main(_):
-    seed = 8964
+    seed = 9874
     tf.set_random_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -72,9 +73,6 @@ def main(_):
     #for file in files:
     #    if os.path.isfile(os.path.join('./log/debug/',file)):
     #        os.remove(os.path.join('./log/debug/',file))
-
-    pp = pprint.PrettyPrinter()
-    pp.pprint(flags.FLAGS.__flags)
 
     if not os.path.exists(FLAGS.logdir):
         os.makedirs(FLAGS.logdir)
