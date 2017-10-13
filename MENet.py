@@ -23,13 +23,9 @@ class MENet(object):
         self.TaskDirs = TaskDirs
         self.TaskLabel = TaskLabel
 
-        self.Mode = tf.placeholder(dtype=tf.uint8,name='Mode')
-        self.ModeTrain = np.uint8(0)
-        self.ModeValid = np.uint8(1)
-
         self.opt = FLAGS
         assert (len(self.TaskDirs.values()) == len(self.Tasks))
-        self.ImagesDirectory = os.path.join(self.opt.logdir,'Images/')
+        self.opt.ImagesDirectory = os.path.join(self.opt.logdir,'Images/')
         self.SessionConfig = tf.ConfigProto()
         self.SessionConfig.gpu_options.allow_growth = True
 
@@ -66,8 +62,10 @@ class MENet(object):
                 for item in image_files[task]
             ])
 
-            # Split the dataset into train and validation sets
+            # TODO : Assert that there is at least one sample per task in the validation stuff
             isValidation = np.random.rand(len(image_files[task])) < self.opt.validation_rate
+
+            # Split the dataset into train and validation sets
             image_files_val[task] = image_files[task][isValidation]
             image_files[task] = image_files[task][np.logical_not(isValidation)]
             annotation_files_val[task] = annotation_files[task][isValidation]
@@ -95,23 +93,38 @@ class MENet(object):
         elif self.opt.weighting == "ENET":
             self.class_weights = ENet_weighing(annotation_files["segmentation"])
 
-        return image_files, annotation_files, image_files_val, annotation_files_val
+        #Function to convert dict lists to np arrays
+        def convertDictListToArray (input_list):
+            return np.array(list(chain.from_iterable([input_list[task] for task in self.Tasks])))
+
+        # Define the number of samples in the dataset
+        self.datasetNumSamples = {}
+
+        # Convert the dict lists to np arrays
+        self.train_image_paths = convertDictListToArray(image_files)
+        self.train_tasks_ids   = np.array(list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])), dtype=np.uint8)
+        self.train_anot_paths  = convertDictListToArray(annotation_files)
+        # TODO : assert that the tensor above have the same dims
+        self.datasetNumSamples['Train'] = self.train_image_paths.shape[0]
+
+        # Convert the dict lists to np arrays
+        self.valid_image_paths = convertDictListToArray(image_files_val)
+        self.valid_tasks_ids   = np.array(list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files_val[task])) for task in self.Tasks])), dtype=np.uint8)
+        self.valid_anot_paths  = convertDictListToArray(annotation_files_val)
+        # TODO : assert that the tensor above have the same dims
+        self.datasetNumSamples['Valid'] = self.valid_image_paths.shape[0]
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to queue data loading (batches)
-    def load_Data(self, image_files, annotation_files):
-            # Load the files into one input queue
-            imlist = np.array(list(chain.from_iterable([image_files[task] for task in self.Tasks])))
-            images = tf.convert_to_tensor(imlist)
-            anotlist = np.array(list(chain.from_iterable([annotation_files[task] for task in self.Tasks])))
-            annotations = tf.convert_to_tensor(anotlist)
-            taskslist = np.array(
-                list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])),
-                dtype=np.uint8)
-            tasks = tf.convert_to_tensor(taskslist, dtype=tf.uint8)
+    def load_Data(self):
+            # Define the path placeholders
+            self.tfph_image_paths = tf.placeholder(dtype=tf.string, shape=[self.datasetNumSamples['Train']], name='Image_Paths')
+            self.tfph_anot_paths  = tf.placeholder(dtype=tf.string, shape=[self.datasetNumSamples['Train']], name='Anot_Paths')
+            self.tfph_tasks_ids   = tf.placeholder(dtype=tf.uint8, shape=[self.datasetNumSamples['Train']], name='Tasks')
 
-            input_queue = tf.train.slice_input_producer(
-                [images, annotations, tasks])  # Slice_input producer shuffles the data by default.
+            # Load the files into one input queue
+            # Note : Slice_input producer shuffles the data by default.
+            input_queue = tf.train.slice_input_producer([self.tfph_image_paths, self.tfph_anot_paths, self.tfph_tasks_ids])
 
             # Decode the image and annotation raw content
             image = tf.read_file(input_queue[0])
@@ -239,19 +252,13 @@ class MENet(object):
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
-    def build_train_graph(self):
+    def build_graph(self):
 
-        image_files, annotation_files, image_files_val, annotation_files_val = self.prepare_Data()
+        self.prepare_Data()
 
         with tf.name_scope("Data"):
-            #def loadTrain() : return self.load_Data(image_files, annotation_files)
-            #def loadValid() : return self.load_Data(image_files_val,annotation_files_val)
-            #def loadNothing() : return tf.no_op, tf.no_op, tf.no_op
-            #self.batch_images, self.batch_annotations, self.batch_tasks = tf.case({
-            # tf.equal(self.Mode, self.ModeTrain, name='ModeIsTrain') : loadTrain,
-            # tf.equal(self.Mode, self.ModeValid, name='ModeIsValid') : loadValid,
-            #}, default= loadTrain)
-            self.load_Data(image_files, annotation_files)
+
+            self.load_Data()
 
         with tf.name_scope("Model"):
             self.MENet_Model()
@@ -359,13 +366,14 @@ class MENet(object):
     # Function dedicated to train MENet network
     def train(self):
 
-        self.build_train_graph()
+        self.build_graph()
 
         self.collect_summaries()
 
         # Count the number of trainable scalars / variables in the model
-        self.modelNumDOF = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
-        self.modelNumVars = len(tf.trainable_variables())
+        with tf.name_scope("ModelParamsFingerPrint"):
+            self.modelNumDOF = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
+            self.modelNumVars = len(tf.trainable_variables())
 
         # Define the saver
         self.saver = tf.train.Saver([var for var in tf.trainable_variables()] + \
@@ -378,10 +386,9 @@ class MENet(object):
                                  save_summaries_secs=0,
                                  saver=None)
 
+
         # Actually runs the session
         with sv.managed_session(config=self.SessionConfig) as sess:
-
-            print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF)) + ") " + str(self.modelNumVars) )
 
             # If found a remaining ckpt restore from this point
             if(os.path.isfile(self.opt.logdir + "/model.latest.meta")):
@@ -393,18 +400,25 @@ class MENet(object):
             if (self.opt.debug):
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
+            # Define the feedict
+            feeddict = {
+                self.tfph_image_paths: self.train_image_paths,
+                self.tfph_anot_paths : self.train_anot_paths,
+                self.tfph_tasks_ids  : self.train_tasks_ids
+            }
+
+            # Define the fetches
+            fetches = {
+                "train": self.train_op,
+                "global_step": self.global_step,
+                "incr_global_step": self.incr_global_step
+            }
+
+            print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF, feeddict)) + ") " + str(
+                self.modelNumVars))
             for step in xrange(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
                 start_time = time.time()
 
-                # Define the fetches
-                fetches = {
-                    "train": self.train_op,
-                    "global_step": self.global_step,
-                    "incr_global_step": self.incr_global_step
-                }
-
-                # Define the feedict (solely for the MODE)
-                feeddict = {self.Mode : self.ModeTrain}
 
                 # Define the Summary/Save/Display related fetches
                 if step % self.opt.summary_freq == 0:
@@ -414,8 +428,9 @@ class MENet(object):
                 if self.opt.save_images and step % self.opt.save_model_freq == 0:
                     fetches["images2write"] = self.images2write
 
+
                 # Run the network with the fetches
-                results = sess.run(fetches,feed_dict=feeddict)
+                results = sess.run(fetches, feeddict)
                 gs = results["global_step"]
 
                 # Summary/Save/Display related stuff
@@ -456,4 +471,4 @@ class MENet(object):
                                     img_tens = 255.0 * img_tens / (self.opt.num_classes-1)
                             img_tens = np.uint8(img_tens)
                             img = Image.fromarray(img_tens)
-                            img.save(os.path.join(self.opt.logdir, str(gs) + "_" + name + ".jpeg"))
+                            img.save(os.path.join(self.opt.ImagesDirectory, str(gs) + "_" + name + ".jpeg"))
