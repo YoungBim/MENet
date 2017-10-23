@@ -39,10 +39,11 @@ class MENet(object):
             # Seek for the full list of raw images
             dataset_raw_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_raw")
             dataset_gt_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_gt")
-            pngfiles = np.array([os.path.join(root, name)
+            pngfiles = np.array([os.path.join(root, name).replace('\\','/')
                                  for root, _, files in os.walk(dataset_raw_path)
                                  for name in files
                                  if name.endswith(".png")])
+
 
             # Get the list of the sub datasets per task
             subdataset = np.array([pngfiles[i].split('/')[-2] for i in range(len(pngfiles))])
@@ -59,7 +60,7 @@ class MENet(object):
 
             # Generate the set of annotation path accordingly
             annotation_files[task] = np.array([
-                os.path.join(dataset_gt_path, item.split('/')[-2], item.split('/')[-1])
+                os.path.join(dataset_gt_path, item.split('/')[-2], item.split('/')[-1]).replace('\\','/')
                 for item in image_files[task]
             ])
 
@@ -370,7 +371,7 @@ class MENet(object):
                 print(var.name)
             print("parameter_count =", sess.run(parameter_count))
 
-            for step in xrange(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
+            for step in range(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
                 start_time = time.time()
 
                 # Define the fetches

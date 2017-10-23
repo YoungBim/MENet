@@ -1,6 +1,5 @@
 import os
 import tensorflow as tf
-import pprint
 import numpy as np
 import random
 from MENet import MENet
@@ -13,8 +12,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='1'
 
 
 #==============INPUT ARGUMENTS==================
-logdirectory = "./leg/"
-datasetdirectory = "./datasit/"
+logdirectory = "./log/"
+datasetdirectory = "./dataset/"
 
 flags = tf.app.flags
 
@@ -72,9 +71,6 @@ def main(_):
     #for file in files:
     #    if os.path.isfile(os.path.join('./log/debug/',file)):
     #        os.remove(os.path.join('./log/debug/',file))
-
-    pp = pprint.PrettyPrinter()
-    pp.pprint(flags.FLAGS.__flags)
 
     if not os.path.exists(FLAGS.logdir):
         os.makedirs(FLAGS.logdir)

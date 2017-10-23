@@ -419,7 +419,7 @@ def ENetEncoder(inputs,
              slim.arg_scope([slim.batch_norm], fused=True), \
              slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=None):
             # =================INITIAL BLOCK=================
-            for i in xrange(1, max(num_initial_blocks, 1) + 1):
+            for i in range(1, max(num_initial_blocks, 1) + 1):
                 feats = initial_block(inputs, scope='initial_block_' + str(i))
 
             # Save for skip connection later
@@ -448,7 +448,7 @@ def ENetEncoder(inputs,
                                                                     downsampling=True, scope='bottleneck2_0')
 
                 # Repeat the stage two at least twice to get stage 2 and 3:
-                for i in xrange(2, max(stage_two_repeat, 2) + 2):
+                for i in range(2, max(stage_two_repeat, 2) + 2):
                     feats = bottleneck(feats, output_depth=128, filter_size=3, scope='bottleneck' + str(i) + '_1')
                     feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope='bottleneck' + str(i) + '_2')
                     feats = bottleneck(feats, output_depth=128, filter_size=5, asymmetric=True, scope='bottleneck' + str(i) + '_3')
@@ -500,7 +500,7 @@ def ENetSegDecoder(Encoder,
     - net(Tensor): a 4D Tensor output of shape [batch_size, image_height, image_width, num_classes], where each pixel has a one-hot encoded vector
                       determining the label of the pixel.
     '''
-    bottleneck_num = xrange(2, max(stage_two_repeat, 2) + 2)[-1]
+    bottleneck_num = range(2, max(stage_two_repeat, 2) + 2)[-1]
     with tf.variable_scope(scope, reuse=reuse):
         #Set the primary arg scopes. Fused batch_norm is faster than normal batch norm.
         with slim.arg_scope([initial_block, bottleneck], is_training=is_training),\
