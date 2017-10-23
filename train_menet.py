@@ -6,9 +6,9 @@ from MENet import MENet
 
 ## https://stackoverflow.com/questions/37893755/tensorflow-set-cuda-visible-devices-within-jupyter
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 ## https://github.com/tensorflow/tensorflow/issues/7778
-os.environ['TF_CPP_MIN_LOG_LEVEL']='1'
+os.environ['TF_CPP_MIN_LOG_LEVEL']='0'
 
 
 #==============INPUT ARGUMENTS==================
@@ -19,10 +19,10 @@ flags = tf.app.flags
 
 #Directory opts
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
-flags.DEFINE_string('logdir', logdirectory + 'custom', 'The log directory to save your checkpoint and event files.')
+flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
 
 #General params
-flags.DEFINE_integer('batch_size', 6, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 3, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")

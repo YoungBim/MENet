@@ -321,6 +321,11 @@ def segmentation_loss_wce(task, pred, anots, num_classes, class_weights):
     loss = weighted_cross_entropy(logits=pred, onehot_labels=annotations_ohe, class_weights=class_weights)
     return loss
 
+def segmentation_loss_wce_Reg(task, pred, anots, num_classes, class_weights):
+   loss = segmentation_loss_wce(task, pred, anots, num_classes, class_weights)
+   loss = tf.add(loss, compute_smooth_loss(pred))
+   return loss
+
 # Naive L1 depth loss
 def depth_loss_nL1(task, pred, anots) :
     numel = pred.get_shape().as_list()[1] * pred.get_shape().as_list()[2]

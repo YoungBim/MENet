@@ -11,8 +11,8 @@ slim = tf.contrib.slim
 from enet import ENetEncoder, ENetSegDecoder, ENetDepthDecoder, ENet_arg_scope
 from get_class_weights import ENet_weighing, median_frequency_balancing
 from preprocessing import preprocess
-from itertools import compress, chain
-from losses import depth_loss_nL1, segmentation_loss_wce
+from itertools import chain
+from losses import depth_loss_nL1_Reg, segmentation_loss_wce_Reg
 
 
 class MENet(object):
@@ -22,9 +22,11 @@ class MENet(object):
         self.Tasks = Tasks
         self.TaskDirs = TaskDirs
         self.TaskLabel = TaskLabel
-        # ==========NAME HANDLING FOR CONVENIENCE==============
         self.opt = FLAGS
         assert (len(self.TaskDirs.values()) == len(self.Tasks))
+        self.opt.ImagesDirectory = os.path.join(self.opt.logdir,'Images/')
+        self.SessionConfig = tf.ConfigProto()
+        self.SessionConfig.gpu_options.allow_growth = True
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to the data preparation (i.e. pure python preprocessing)
@@ -32,31 +34,24 @@ class MENet(object):
         # ===============PREPARATION FOR TRAINING==================
         image_files = {}
         annotation_files = {}
-        SubDataSets = {}
-        Supervised = {}
 
         for task in self.Tasks:  # For each task of the network
             # Seek for the full list of raw images
             dataset_raw_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_raw")
             dataset_gt_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_gt")
             pngfiles = np.array([os.path.join(root, name).replace('\\','/')
-                                 for root, _, files in os.walk(dataset_raw_path)
+                                 for root, _, files in os.walk(dataset_raw_path, followlinks=True)
                                  for name in files
                                  if name.endswith(".png")])
 
-
-            # Get the list of the sub datasets per task
-            subdataset = np.array([pngfiles[i].split('/')[-2] for i in range(len(pngfiles))])
-            SubDataSets[task] = subdataset[np.insert(subdataset[:-1] != subdataset[1:], 0, True)].tolist()
-
             # Check the existence of the GT file (i.e. is that an unsupervised sample or a supervised one ?!)
-            Supervised[task] = np.array(
-                [os.path.isfile(os.path.join(dataset_gt_path, filename.split('/')[-2], filename.split('/')[-1]))
+            Supervised = np.array(
+                [os.path.isfile(os.path.join(dataset_gt_path, filename.split('/')[-2], filename.split('/')[-1]).replace('\\','/'))
                  for filename in pngfiles
                  ])
 
             # Remove all samples that are unsupervised
-            image_files[task] = pngfiles[Supervised[task]]
+            image_files[task] = pngfiles[Supervised]
 
             # Generate the set of annotation path accordingly
             annotation_files[task] = np.array([
@@ -67,9 +62,10 @@ class MENet(object):
             image_files[task] = sorted(image_files[task])
             annotation_files[task] = sorted(annotation_files[task])
 
-            # TODO : remove this
-            # image_files[task] = [image_files[task][i] for i in range(25,35,1)]
-            # annotation_files[task] = [annotation_files[task][i] for i in range(25,35,1)]
+        # Reorder the files by name (just for style)
+        for task in self.Tasks:
+            image_files[task] = sorted(image_files[task])
+            annotation_files[task] = sorted(annotation_files[task])
 
         # Know the number steps to take before decaying the learning rate and batches per epoch
         num_batches_per_epoch = 0
@@ -164,11 +160,11 @@ class MENet(object):
     def compute_loss(self, task, pred, anots, n_smpl):
         if task == "segmentation":
             loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
-                           lambda: segmentation_loss_wce(task, pred, anots, self.opt.num_classes, self.class_weights),
+                           lambda: segmentation_loss_wce_Reg(task, pred, anots, self.opt.num_classes, self.class_weights),
                            lambda: tf.constant(0, dtype=tf.float32))
         elif task == "depth":
             loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
-                           lambda: depth_loss_nL1(task, pred, anots), lambda: tf.constant(0, dtype=tf.float32))
+                           lambda: depth_loss_nL1_Reg(task, pred, anots), lambda: tf.constant(0, dtype=tf.float32))
         else:
             print("Please define a loss for this task")
             loss = tf.constant(0, dtype=tf.float32)
@@ -232,7 +228,7 @@ class MENet(object):
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
     def build_train_graph(self):
-        opt = self.opt
+
         image_files, annotation_files = self.prepare_Data()
 
         with tf.name_scope("Data"):
@@ -347,39 +343,47 @@ class MENet(object):
         self.build_train_graph()
         self.collect_summaries()
 
-        with tf.name_scope("parameter_count"):
-            parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) \
-                                            for v in tf.trainable_variables()])
-            self.saver = tf.train.Saver([var for var in tf.trainable_variables()] + \
+        # Count the number of trainable scalars / variables in the model
+        with tf.name_scope("ModelParamsFingerPrint"):
+            self.modelNumDOF = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
+            self.modelNumVars = len(tf.trainable_variables())
+
+        # Define the saver
+        self.saver = tf.train.Saver([var for var in tf.trainable_variables()] + \
                                     [self.global_step],
                                     save_relative_paths=True,
                                     max_to_keep=self.opt.max_model_saved)
+
+        # Define the session superviser
         sv = tf.train.Supervisor(logdir=self.opt.logdir,
                                  save_summaries_secs=0,
                                  saver=None)
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
 
-        with sv.managed_session(config=config) as sess:
+
+        # Actually runs the session
+        with sv.managed_session(config=self.SessionConfig) as sess:
+
+            # If found a remaining ckpt restore from this point
+            if(os.path.isfile(self.opt.logdir + "/model.latest.meta")):
+                print('Restoring from the latest Checkpoint')
+                self.saver.restore(sess, self.opt.logdir + "model.latest")
+                print('Done')
 
             # Activate debug when mode enabled
             if (self.opt.debug):
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
-            print('Trainable variables: ')
-            for var in tf.trainable_variables():
-                print(var.name)
-            print("parameter_count =", sess.run(parameter_count))
+            # Define the fetches
+            fetches = {
+                "train": self.train_op,
+                "global_step": self.global_step,
+                "incr_global_step": self.incr_global_step
+            }
 
+            print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF)) + ") " + str(
+                self.modelNumVars))
             for step in range(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
                 start_time = time.time()
-
-                # Define the fetches
-                fetches = {
-                    "train": self.train_op,
-                    "global_step": self.global_step,
-                    "incr_global_step": self.incr_global_step
-                }
 
                 # Define the Summary/Save/Display related fetches
                 if step % self.opt.summary_freq == 0:
@@ -410,13 +414,16 @@ class MENet(object):
                     self.save(sess, self.opt.logdir, 'latest')
                     self.save(sess, self.opt.logdir, gs)
                     if self.opt.save_images:
+                        # Check if the Images folder is setup
+                        if not os.path.exists(self.opt.ImagesDirectory):
+                            os.makedirs(self.opt.ImagesDirectory)
                         # Write images prediction vs GT
                         im2write = results["images2write"]
-                        for name, img_tens in im2write.iteritems():
+                        for name, img_tens in im2write.items():
                             if len(img_tens.shape)>2:
                                 if img_tens.shape[2] == 3:
                                     img = Image.fromarray(np.uint8(255.0 * img_tens))
-                                    img.save(os.path.join(self.opt.logdir, str(gs) + "_" + name + ".jpeg"))
+                                    img.save(os.path.join(self.opt.ImagesDirectory, str(gs) + "_" + name + ".jpeg"))
                                     continue
 
                             # The predicted images must be converted
@@ -427,4 +434,4 @@ class MENet(object):
                                     img_tens = 255.0 * img_tens / (self.opt.num_classes-1)
                             img_tens = np.uint8(img_tens)
                             img = Image.fromarray(img_tens)
-                            img.save(os.path.join(self.opt.logdir, str(gs) + "_" + name + ".jpeg"))
+                            img.save(os.path.join(self.opt.ImagesDirectory, str(gs) + "_" + name + ".jpeg"))
