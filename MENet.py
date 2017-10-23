@@ -252,18 +252,27 @@ class MENet(object):
         # Display the #of smples / batch in the summary
         tf.summary.scalar(task + '/Samples', self.n_smpl[task])
 
+
         # Task-Dependent summaries
         if task == 'segmentation':
-            # Put a prediction from the batch to the summary
-            img2sum = tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
+            def getSegmentation_pred():
+                return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
+            def getNoSegmentation_pred():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Segmentation")
+            # Put a prediction from the batch to the summary (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getSegmentation_pred, getNoSegmentation_pred)
             img2sum = tf.reshape(tf.cast(tf.argmax(img2sum, axis=-1), dtype=tf.float32),
                                  shape=[-1, self.opt.image_height, self.opt.image_width, 1])
             tf.summary.image(task + '/pred', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_pred'] = tf.squeeze(img2sum, axis=[0, 3])
 
-            # Put a gt from the batch to the summary
-            img2sum = tf.expand_dims(self.anots[task][0, :, :], axis=0)
+            def getSegmentation_gt():
+                return tf.expand_dims(self.anots[task][0, :, :], axis=0)
+            def getNoSegmentation_gt():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width], dtype=tf.uint8, name="No_Segmentation_gt")
+            # Put a gt from the batch to the summary (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getSegmentation_gt, getNoSegmentation_gt)
             img2sum = tf.cast(
                 tf.reshape(tf.cast(img2sum, dtype=tf.float32),
                            shape=[-1, self.opt.image_height, self.opt.image_width, 1]),
@@ -274,31 +283,48 @@ class MENet(object):
 
             for othertask in self.Tasks:
                 if not othertask == task:
+                    def getSegmentation_depth_pred():
+                        temp = tf.boolean_mask(self.predictions[othertask], self.mask[task])
+                        return tf.expand_dims(temp[0, :, :, :], axis=0)
+                    def getNoSegmentation_depth_pred():
+                        return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Segmentation_depth_pred")
                     # Put a prediction OF THE OTHER TASK from the batch to the summary
-                    img2sum = tf.boolean_mask(self.predictions[othertask], self.mask[task])
-                    img2sum = tf.expand_dims(img2sum[0, :, :, :], axis=0)
+                    img2sum = tf.cond(self.has_smpl[task], getSegmentation_depth_pred, getNoSegmentation_depth_pred)
+                    # Put a prediction OF THE OTHER TASK from the batch to the summary (if exists in the batch)
                     tf.summary.image(task + '/pred_' + othertask, img2sum, max_outputs=1)
                     # Save the images to be written later
                     self.images2write[task + '_pred_' + othertask] = tf.squeeze(img2sum, axis=[0, 3])
 
         elif task == 'depth':
-            # Put a prediction image from the batch to the summary
-            img2sum = tf.expand_dims(self.pred[task][0,:,:,:], axis=0) # Make sure the items are synced
+            def getDepth_pred():
+                return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
+            def getNoDepth_pred():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Depth")
+            # Put a prediction image from the batch to the summary  (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getDepth_pred, getNoDepth_pred)
             tf.summary.image(task + '/pred', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_pred']  = tf.squeeze(img2sum,axis = [0, 3])
 
-            # Put a gt image from the batch to the summary
-            img2sum = tf.expand_dims(tf.expand_dims(self.anots[task][0,:,:],axis=-1), axis=0) # Make sure the items are synced
+            def getDepth_gt():
+                return tf.expand_dims(tf.expand_dims(self.anots[task][0,:,:],axis=-1), axis=0)
+            def getNoDepth_gt():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.uint8, name="No_Depth_gt")
+            # Put a gt image from the batch to the summary  (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getDepth_gt, getNoDepth_gt)
             tf.summary.image(task + '/gt', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_gt'] = tf.squeeze(img2sum,axis = [0, 3])
 
             for othertask in self.Tasks:
                 if not othertask == task:
-                    # Put a prediction OF THE OTHER TASK from the batch to the summary
-                    img2sum = tf.boolean_mask(self.predictions[othertask], self.mask[task])
-                    img2sum = tf.expand_dims(img2sum[0, :, :, :], axis=0)
+                    def getDepth_segmentation_pred():
+                        temp = tf.boolean_mask(self.predictions[othertask], self.mask[task])
+                        return tf.expand_dims(temp[0, :, :, :], axis=0)
+                    def getNoDepth_segmentation_pred():
+                        return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Depth_segmentation_pred")
+                    # Put a prediction OF THE OTHER TASK from the batch to the summary (if exists in the batch)
+                    img2sum = tf.cond(self.has_smpl[task], getDepth_segmentation_pred, getNoDepth_segmentation_pred)
                     img2sum = tf.reshape(tf.cast(tf.argmax(img2sum, axis=-1), dtype=tf.float32),
                                          shape=[-1, self.opt.image_height, self.opt.image_width, 1])
                     tf.summary.image(task + '/pred_' + othertask, img2sum, max_outputs=1)
@@ -306,7 +332,11 @@ class MENet(object):
                     self.images2write[task + '_pred_' + othertask] = tf.squeeze(img2sum, axis=[0, 3])
 
         # Whatever the task is, put an input image from the batch to the summary
-        img2sum = tf.expand_dims(tf.boolean_mask(self.batch_images, self.mask[task])[0, :, :, :], axis=0)
+        def getOrig():
+            return tf.expand_dims(tf.boolean_mask(self.batch_images, self.mask[task])[0, :, :, :], axis=0)
+        def getNoOrig():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width, 3], dtype=tf.float32, name="No_Orig")
+        img2sum = tf.cond(self.has_smpl[task], getOrig, getNoOrig)
         tf.summary.image(task + '/input', img2sum, max_outputs=1)
         self.images2write[task + '_input'] = tf.squeeze(img2sum, axis=0)
 

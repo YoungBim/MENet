@@ -8,7 +8,7 @@ from MENet import MENet
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 ## https://github.com/tensorflow/tensorflow/issues/7778
-os.environ['TF_CPP_MIN_LOG_LEVEL']='0'
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 
 #==============INPUT ARGUMENTS==================
@@ -22,7 +22,7 @@ flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to 
 flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
 
 #General params
-flags.DEFINE_integer('batch_size', 3, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 1, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
