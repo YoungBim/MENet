@@ -12,7 +12,7 @@ from enet import ENetEncoder, ENetSegDecoder, ENetDepthDecoder, ENet_arg_scope
 from get_class_weights import ENet_weighing, median_frequency_balancing
 from preprocessing import preprocess
 from itertools import chain
-from losses import depth_loss_nL1_Reg, segmentation_loss_wce_Reg
+from losses import depth_loss_nL1, segmentation_loss_wce, depth_loss_nL1_Reg
 
 
 class MENet(object):
@@ -68,12 +68,15 @@ class MENet(object):
             annotation_files[task] = sorted(annotation_files[task])
 
         # Know the number steps to take before decaying the learning rate and batches per epoch
-        num_batches_per_epoch = 0
+        self.opt.dataset_num_samples = {}
+        self.opt.dataset_total_num_samples = 0
         for task in self.Tasks:
-            num_batches_per_epoch = num_batches_per_epoch + len(image_files[task])
-        self.opt.num_batches_per_epoch = num_batches_per_epoch / self.opt.batch_size
-        self.opt.num_steps_per_epoch = num_batches_per_epoch
-        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_steps_per_epoch)
+            self.opt.dataset_num_samples[task] = len(image_files[task])
+            self.opt.dataset_total_num_samples = self.opt.dataset_total_num_samples + self.opt.dataset_num_samples[task]
+
+        self.opt.num_samples_per_epoch = self.opt.dataset_total_num_samples
+        self.opt.num_batches_per_epoch = self.opt.num_samples_per_epoch / self.opt.batch_size
+        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
 
         # =================CLASS WEIGHTS===============================
         # Median frequency balancing class_weights
@@ -160,7 +163,7 @@ class MENet(object):
     def compute_loss(self, task, pred, anots, n_smpl):
         if task == "segmentation":
             loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
-                           lambda: segmentation_loss_wce_Reg(task, pred, anots, self.opt.num_classes, self.class_weights),
+                           lambda: segmentation_loss_wce(task, pred, anots, self.opt.num_classes, self.class_weights),
                            lambda: tf.constant(0, dtype=tf.float32))
         elif task == "depth":
             loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
@@ -357,14 +360,25 @@ class MENet(object):
     # Function dedicated to save the network
     def save(self, sess, checkpoint_dir, step):
         model_name = 'model'
-        print(" [*] Saving checkpoint to %s..." % checkpoint_dir)
         if step == 'latest':
+            print(" [*] Saving checkpoint to %s..." % checkpoint_dir)
             self.saver.save(sess,
-                            os.path.join(checkpoint_dir, model_name + '.latest'))
+                            os.path.join(checkpoint_dir, self.opt.model_name + '.latest'))
         else:
             self.saver.save(sess,
-                            os.path.join(checkpoint_dir, model_name),
+                            os.path.join(checkpoint_dir, self.opt.model_name),
                             global_step=step)
+
+    # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    # Function that prints usefull information for the user
+    def printInitialInfo(self,sess):
+        print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF)) + ") " + str(
+            self.modelNumVars))
+        pt = "Dataset of " + str(self.opt.dataset_total_num_samples) + " samples ("
+        for task in self.Tasks:
+            pt = pt + str(self.opt.dataset_num_samples[task]) + " for " + task + ", "
+        pt = pt[:-2] + ")"
+        print(pt)
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to train MENet network
@@ -389,30 +403,31 @@ class MENet(object):
                                  save_summaries_secs=0,
                                  saver=None)
 
-
         # Actually runs the session
         with sv.managed_session(config=self.SessionConfig) as sess:
-
-            # If found a remaining ckpt restore from this point
-            if(os.path.isfile(self.opt.logdir + "/model.latest.meta")):
-                print('Restoring from the latest Checkpoint')
-                self.saver.restore(sess, self.opt.logdir + "model.latest")
-                print('Done')
 
             # Activate debug when mode enabled
             if (self.opt.debug):
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
+            # Print uselfull info for user
+            self.printInitialInfo(sess)
+
+            # If found a remaining ckpt restore from this point
+            if (os.path.isfile(self.opt.logdir + "/model.latest.meta")):
+                print('Restoring from the latest Checkpoint')
+                self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
+                print('Done')
+
             # Define the fetches
             fetches = {
                 "train": self.train_op,
                 "global_step": self.global_step,
+                "learning_rate": self.opt.learning_rate,
                 "incr_global_step": self.incr_global_step
             }
 
-            print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF)) + ") " + str(
-                self.modelNumVars))
-            for step in range(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
+            for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
                 start_time = time.time()
 
                 # Define the Summary/Save/Display related fetches
@@ -432,17 +447,17 @@ class MENet(object):
                     sv.summary_writer.add_summary(results["summary"], gs)
                     train_epoch = math.ceil(gs / self.opt.num_batches_per_epoch)
                     train_step = gs - (train_epoch - 1) * self.opt.num_batches_per_epoch
-                    print("Epoch: [%2d] [%5d/%5d] time: %4.4f/it" \
+                    print("Epoch: [%2d] [%5d/%5d] time: %4.2f/it learning rate: %1.6f" \
                             % (train_epoch, train_step, self.opt.num_batches_per_epoch, \
-                                time.time() - start_time))
+                                time.time() - start_time, results["learning_rate"]))
                     pt = "\t losses : "
                     for task in self.Tasks:
                         pt = pt + task + " : " + str(results["losses"][task]) + " | "
                     print(pt + "total : %.3f"%(results["loss"]))
 
                 if step % self.opt.save_model_freq == 0:
-                    self.save(sess, self.opt.logdir, 'latest')
                     self.save(sess, self.opt.logdir, gs)
+                    self.save(sess, self.opt.logdir, 'latest')
                     if self.opt.save_images:
                         # Check if the Images folder is setup
                         if not os.path.exists(self.opt.ImagesDirectory):
