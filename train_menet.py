@@ -17,17 +17,17 @@ datasetdirectory = "./dataset/"
 
 flags = tf.app.flags
 
-#Directory opts
+# Directory opts
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
 
-#General params
+# General params
 flags.DEFINE_integer('batch_size', 7, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
 
-#Training opts
+# Training opts
 flags.DEFINE_integer('num_epochs', 225, "The number of epochs to train your model.")
 flags.DEFINE_integer('num_epochs_before_decay', 75, 'The number of epochs before decaying your learning rate.')
 flags.DEFINE_float('weight_decay', 2e-4, "The weight decay for ENet convolution layers.")

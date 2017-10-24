@@ -84,6 +84,8 @@ class MENet(object):
         elif self.opt.weighting == "ENET":
             self.class_weights = ENet_weigthing(annotation_files["segmentation"])
 
+        return image_files, annotation_files
+
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to queue data loading (batches)
     def load_Data(self, image_files, annotation_files):
