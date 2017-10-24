@@ -34,7 +34,6 @@ flags.DEFINE_float('weight_decay', 2e-4, "The weight decay for ENet convolution 
 flags.DEFINE_float('learning_rate_decay_factor', 1e-1, 'The learning rate decay factor.')
 flags.DEFINE_float("adam_momentum", 1e-8, "Momentum term of adam (beta1)")
 flags.DEFINE_float('initial_learning_rate', 5e-4, 'The initial learning rate for your training.')
-flags.DEFINE_integer('validation_rate', 0.10, 'Percentage of the files dedicated to the validation during train.')
 
 # Define the desired tasks
 Tasks = ["segmentation", "depth"]

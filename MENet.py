@@ -60,31 +60,17 @@ class MENet(object):
                 for item in image_files[task]
             ])
 
-            # TODO : Assert that there is at least one sample per task in the validation stuff
-            isValidation = np.random.rand(len(image_files[task])) < self.opt.validation_rate
-
-            # Split the dataset into train and validation sets
-            image_files_val[task] = image_files[task][isValidation]
-            image_files[task] = image_files[task][np.logical_not(isValidation)]
-            annotation_files_val[task] = annotation_files[task][isValidation]
-            annotation_files[task] = annotation_files[task][np.logical_not(isValidation)]
-
-        # Reorder the files by name (just for style)
-        for task in self.Tasks:
+            # Reorder the files by name (just for style)
             image_files[task] = sorted(image_files[task])
             annotation_files[task] = sorted(annotation_files[task])
 
-        # Reorder the files by name (just for style)
-        for task in self.Tasks:
-            image_files[task] = sorted(image_files[task])
-            annotation_files[task] = sorted(annotation_files[task])
+
         # Know the number steps to take before decaying the learning rate and batches per epoch
         self.opt.dataset_num_samples = {}
         self.opt.dataset_total_num_samples = 0
         for task in self.Tasks:
             self.opt.dataset_num_samples[task] = len(image_files[task])
             self.opt.dataset_total_num_samples = self.opt.dataset_total_num_samples + self.opt.dataset_num_samples[task]
-
         self.opt.num_samples_per_epoch = self.opt.dataset_total_num_samples
         self.opt.num_batches_per_epoch = self.opt.num_samples_per_epoch / self.opt.batch_size
         self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
@@ -96,40 +82,23 @@ class MENet(object):
 
         # Inverse weighing probability class weights
         elif self.opt.weighting == "ENET":
-            self.class_weights = ENet_weighing(annotation_files["segmentation"])
-
-        #Function to convert dict lists to np arrays
-        def convertDictListToArray (input_list):
-            return np.array(list(chain.from_iterable([input_list[task] for task in self.Tasks])))
-
-        # Define the number of samples in the dataset
-        self.datasetNumSamples = {}
-
-        # Convert the dict lists to np arrays
-        self.train_image_paths = convertDictListToArray(image_files)
-        self.train_tasks_ids   = np.array(list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])), dtype=np.uint8)
-        self.train_anot_paths  = convertDictListToArray(annotation_files)
-        # TODO : assert that the tensor above have the same dims
-        self.datasetNumSamples['Train'] = self.train_image_paths.shape[0]
-
-        # Convert the dict lists to np arrays
-        self.valid_image_paths = convertDictListToArray(image_files_val)
-        self.valid_tasks_ids   = np.array(list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files_val[task])) for task in self.Tasks])), dtype=np.uint8)
-        self.valid_anot_paths  = convertDictListToArray(annotation_files_val)
-        # TODO : assert that the tensor above have the same dims
-        self.datasetNumSamples['Valid'] = self.valid_image_paths.shape[0]
+            self.class_weights = ENet_weigthing(annotation_files["segmentation"])
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to queue data loading (batches)
-    def load_Data(self):
-            # Define the path placeholders
-            self.tfph_image_paths = tf.placeholder(dtype=tf.string, shape=[self.datasetNumSamples['Train']], name='Image_Paths')
-            self.tfph_anot_paths  = tf.placeholder(dtype=tf.string, shape=[self.datasetNumSamples['Train']], name='Anot_Paths')
-            self.tfph_tasks_ids   = tf.placeholder(dtype=tf.uint8, shape=[self.datasetNumSamples['Train']], name='Tasks')
-
+    def load_Data(self, image_files, annotation_files):
             # Load the files into one input queue
-            # Note : Slice_input producer shuffles the data by default.
-            input_queue = tf.train.slice_input_producer([self.tfph_image_paths, self.tfph_anot_paths, self.tfph_tasks_ids])
+            imlist = np.array(list(chain.from_iterable([image_files[task] for task in self.Tasks])))
+            images = tf.convert_to_tensor(imlist)
+            anotlist = np.array(list(chain.from_iterable([annotation_files[task] for task in self.Tasks])))
+            annotations = tf.convert_to_tensor(anotlist)
+            taskslist = np.array(
+                list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])),
+                dtype=np.uint8)
+            tasks = tf.convert_to_tensor(taskslist, dtype=tf.uint8)
+
+            input_queue = tf.train.slice_input_producer(
+                [images, annotations, tasks])
 
             # Decode the image and annotation raw content
             image = tf.read_file(input_queue[0])
@@ -257,13 +226,13 @@ class MENet(object):
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
-    def build_graph(self):
+    def build_train_graph(self):
 
-        self.prepare_Data()
+        image_files, annotation_files = self.prepare_Data()
 
         with tf.name_scope("Data"):
 
-            self.load_Data()
+            self.load_Data(image_files, annotation_files)
 
         with tf.name_scope("Model"):
             self.MENet_Model()
@@ -412,8 +381,7 @@ class MENet(object):
     # Function dedicated to train MENet network
     def train(self):
 
-        self.build_graph()
-
+        self.build_train_graph()
         self.collect_summaries()
 
         # Count the number of trainable scalars / variables in the model
@@ -434,7 +402,6 @@ class MENet(object):
 
         # Actually runs the session
         with sv.managed_session(config=self.SessionConfig) as sess:
-        with sv.managed_session(config=self.SessionConfig) as sess:
 
             # If found a remaining ckpt restore from this point
             if(os.path.isfile(self.opt.logdir + "/model.latest.meta")):
@@ -448,7 +415,7 @@ class MENet(object):
 
             # Print uselfull info for user
             self.printInitialInfo(sess)
-                self.tfph_tasks_ids  : self.train_tasks_ids
+
             # If found a remaining ckpt restore from this point
             if (os.path.isfile(self.opt.logdir + "/model.latest.meta")):
                 print('Restoring from the latest Checkpoint')
@@ -464,10 +431,6 @@ class MENet(object):
             }
 
             for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
-                start_time = time.time()
-
-                start_time = time.time()
-
 
                 # Define the Summary/Save/Display related fetches
                 if step % self.opt.summary_freq == 0:
@@ -479,7 +442,8 @@ class MENet(object):
 
 
                 # Run the network with the fetches
-                results = sess.run(fetches, feeddict)
+                start_time = time.time()
+                results = sess.run(fetches)
                 gs = results["global_step"]
 
                 # Summary/Save/Display related stuff
@@ -501,7 +465,6 @@ class MENet(object):
                     if self.opt.save_images:
                         # Check if the Images folder is setup
                         if not os.path.exists(self.opt.ImagesDirectory):
-                            os.makedirs(self.opt.ImagesDirectory)
                             os.makedirs(self.opt.ImagesDirectory)
                         # Write images prediction vs GT
                         im2write = results["images2write"]
