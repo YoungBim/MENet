@@ -12,3 +12,13 @@ Segmentation + Depth Branches
 @Train : loss = 2E-2 @50k iters (batch 10)
 @Train : depthloss = 1.5E-2 | segloss = 5E-3 @50k its
 @Train : runtime ~ 1.2 FPS (fwd+bwd, batch 10)
+
+-----------------------------
+Segmentation + Depth Branches hash 733c21c
+
+@Train : loss = 0.32 @50k iters (batch 8)
+@Train : depthloss = 0.26 | segloss = 5E-2 @50k its
+@Train : runtime ~ 9 FPS (fwd+bwd, batch 8)
+
+Using one smooth reg on each branch without weighting is not working well...
+

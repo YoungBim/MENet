@@ -1,19 +1,18 @@
 import os
 import tensorflow as tf
-import pprint
 import numpy as np
 import random
 from MENet import MENet
 
 ## https://stackoverflow.com/questions/37893755/tensorflow-set-cuda-visible-devices-within-jupyter
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 ## https://github.com/tensorflow/tensorflow/issues/7778
-os.environ['TF_CPP_MIN_LOG_LEVEL']='1'
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 
 #==============INPUT ARGUMENTS==================
-logdirectory = "./log/debug/"
+logdirectory = "./log/"
 datasetdirectory = "./dataset/"
 
 flags = tf.app.flags
@@ -23,14 +22,14 @@ flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to 
 flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
 
 #General params
-flags.DEFINE_integer('batch_size', 10, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 7, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
 
 #Training opts
-flags.DEFINE_integer('num_epochs', 500, "The number of epochs to train your model.")
-flags.DEFINE_integer('num_epochs_before_decay', 100, 'The number of epochs before decaying your learning rate.')
+flags.DEFINE_integer('num_epochs', 225, "The number of epochs to train your model.")
+flags.DEFINE_integer('num_epochs_before_decay', 75, 'The number of epochs before decaying your learning rate.')
 flags.DEFINE_float('weight_decay', 2e-4, "The weight decay for ENet convolution layers.")
 flags.DEFINE_float('learning_rate_decay_factor', 1e-1, 'The learning rate decay factor.')
 flags.DEFINE_float("adam_momentum", 1e-8, "Momentum term of adam (beta1)")
@@ -40,13 +39,12 @@ flags.DEFINE_integer('validation_rate', 0.10, 'Percentage of the files dedicated
 # Define the desired tasks
 Tasks = ["segmentation", "depth"]
 TaskDirs = {Tasks[0]: 'seg', Tasks[1]: 'depth'}
-#Tasks = ["segmentation"]
-#TaskDirs = {Tasks[0]: 'seg'}
 TaskLabel = {Tasks[i]: np.uint8(i) for i in range(len(Tasks))}
 
-# Debug/Summary related opts
-flags.DEFINE_integer("summary_freq", 100, "Logging every log_freq iterations")
-flags.DEFINE_integer("save_model_freq", 500, "Logging every log_freq iterations")
+# Debug/Summary/Save related opts
+flags.DEFINE_string('model_name', "MENET", 'String specifying the name of the model.')
+flags.DEFINE_integer("summary_freq", 500, "Logging every log_freq iterations")
+flags.DEFINE_integer("save_model_freq", 2000, "Logging every log_freq iterations")
 flags.DEFINE_integer("max_model_saved", 5, "Maximum number of model saved")
 flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt images with the model")
 

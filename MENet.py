@@ -11,8 +11,8 @@ slim = tf.contrib.slim
 from enet import ENetEncoder, ENetSegDecoder, ENetDepthDecoder, ENet_arg_scope
 from get_class_weights import ENet_weighing, median_frequency_balancing
 from preprocessing import preprocess
-from itertools import compress, chain
-from losses import depth_loss_nL1, segmentation_loss_wce
+from itertools import chain
+from losses import depth_loss_nL1, segmentation_loss_wce, depth_loss_nL1_Reg
 
 
 class MENet(object):
@@ -35,21 +35,19 @@ class MENet(object):
         # ===============PREPARATION FOR TRAINING==================
         image_files = {}
         annotation_files = {}
-        image_files_val = {}
-        annotation_files_val = {}
 
         for task in self.Tasks:  # For each task of the network
             # Seek for the full list of raw images
             dataset_raw_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_raw")
             dataset_gt_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_gt")
-            pngfiles = np.array([os.path.join(root, name)
-                                 for root, _, files in os.walk(dataset_raw_path,followlinks=True)
+            pngfiles = np.array([os.path.join(root, name).replace('\\','/')
+                                 for root, _, files in os.walk(dataset_raw_path, followlinks=True)
                                  for name in files
                                  if name.endswith(".png")])
 
             # Check the existence of the GT file (i.e. is that an unsupervised sample or a supervised one ?!)
             Supervised = np.array(
-                [os.path.isfile(os.path.join(dataset_gt_path, filename.split('/')[-2], filename.split('/')[-1]))
+                [os.path.isfile(os.path.join(dataset_gt_path, filename.split('/')[-2], filename.split('/')[-1]).replace('\\','/'))
                  for filename in pngfiles
                  ])
 
@@ -58,7 +56,7 @@ class MENet(object):
 
             # Generate the set of annotation path accordingly
             annotation_files[task] = np.array([
-                os.path.join(dataset_gt_path, item.split('/')[-2], item.split('/')[-1])
+                os.path.join(dataset_gt_path, item.split('/')[-2], item.split('/')[-1]).replace('\\','/')
                 for item in image_files[task]
             ])
 
@@ -76,13 +74,20 @@ class MENet(object):
             image_files[task] = sorted(image_files[task])
             annotation_files[task] = sorted(annotation_files[task])
 
-        # Know the number steps to take before decaying the learning rate and batches per epoch
-        num_batches_per_epoch = 0
+        # Reorder the files by name (just for style)
         for task in self.Tasks:
-            num_batches_per_epoch = num_batches_per_epoch + len(image_files[task])
-        self.opt.num_batches_per_epoch = num_batches_per_epoch / self.opt.batch_size
-        self.opt.num_steps_per_epoch = num_batches_per_epoch
-        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_steps_per_epoch)
+            image_files[task] = sorted(image_files[task])
+            annotation_files[task] = sorted(annotation_files[task])
+        # Know the number steps to take before decaying the learning rate and batches per epoch
+        self.opt.dataset_num_samples = {}
+        self.opt.dataset_total_num_samples = 0
+        for task in self.Tasks:
+            self.opt.dataset_num_samples[task] = len(image_files[task])
+            self.opt.dataset_total_num_samples = self.opt.dataset_total_num_samples + self.opt.dataset_num_samples[task]
+
+        self.opt.num_samples_per_epoch = self.opt.dataset_total_num_samples
+        self.opt.num_batches_per_epoch = self.opt.num_samples_per_epoch / self.opt.batch_size
+        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
 
         # =================CLASS WEIGHTS===============================
         # Median frequency balancing class_weights
@@ -189,7 +194,7 @@ class MENet(object):
                            lambda: tf.constant(0, dtype=tf.float32))
         elif task == "depth":
             loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
-                           lambda: depth_loss_nL1(task, pred, anots), lambda: tf.constant(0, dtype=tf.float32))
+                           lambda: depth_loss_nL1_Reg(task, pred, anots), lambda: tf.constant(0, dtype=tf.float32))
         else:
             print("Please define a loss for this task")
             loss = tf.constant(0, dtype=tf.float32)
@@ -278,18 +283,27 @@ class MENet(object):
         # Display the #of smples / batch in the summary
         tf.summary.scalar(task + '/Samples', self.n_smpl[task])
 
+
         # Task-Dependent summaries
         if task == 'segmentation':
-            # Put a prediction from the batch to the summary
-            img2sum = tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
+            def getSegmentation_pred():
+                return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
+            def getNoSegmentation_pred():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Segmentation")
+            # Put a prediction from the batch to the summary (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getSegmentation_pred, getNoSegmentation_pred)
             img2sum = tf.reshape(tf.cast(tf.argmax(img2sum, axis=-1), dtype=tf.float32),
                                  shape=[-1, self.opt.image_height, self.opt.image_width, 1])
             tf.summary.image(task + '/pred', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_pred'] = tf.squeeze(img2sum, axis=[0, 3])
 
-            # Put a gt from the batch to the summary
-            img2sum = tf.expand_dims(self.anots[task][0, :, :], axis=0)
+            def getSegmentation_gt():
+                return tf.expand_dims(self.anots[task][0, :, :], axis=0)
+            def getNoSegmentation_gt():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width], dtype=tf.uint8, name="No_Segmentation_gt")
+            # Put a gt from the batch to the summary (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getSegmentation_gt, getNoSegmentation_gt)
             img2sum = tf.cast(
                 tf.reshape(tf.cast(img2sum, dtype=tf.float32),
                            shape=[-1, self.opt.image_height, self.opt.image_width, 1]),
@@ -300,31 +314,48 @@ class MENet(object):
 
             for othertask in self.Tasks:
                 if not othertask == task:
+                    def getSegmentation_depth_pred():
+                        temp = tf.boolean_mask(self.predictions[othertask], self.mask[task])
+                        return tf.expand_dims(temp[0, :, :, :], axis=0)
+                    def getNoSegmentation_depth_pred():
+                        return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Segmentation_depth_pred")
                     # Put a prediction OF THE OTHER TASK from the batch to the summary
-                    img2sum = tf.boolean_mask(self.predictions[othertask], self.mask[task])
-                    img2sum = tf.expand_dims(img2sum[0, :, :, :], axis=0)
+                    img2sum = tf.cond(self.has_smpl[task], getSegmentation_depth_pred, getNoSegmentation_depth_pred)
+                    # Put a prediction OF THE OTHER TASK from the batch to the summary (if exists in the batch)
                     tf.summary.image(task + '/pred_' + othertask, img2sum, max_outputs=1)
                     # Save the images to be written later
                     self.images2write[task + '_pred_' + othertask] = tf.squeeze(img2sum, axis=[0, 3])
 
         elif task == 'depth':
-            # Put a prediction image from the batch to the summary
-            img2sum = tf.expand_dims(self.pred[task][0,:,:,:], axis=0) # Make sure the items are synced
+            def getDepth_pred():
+                return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
+            def getNoDepth_pred():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Depth")
+            # Put a prediction image from the batch to the summary  (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getDepth_pred, getNoDepth_pred)
             tf.summary.image(task + '/pred', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_pred']  = tf.squeeze(img2sum,axis = [0, 3])
 
-            # Put a gt image from the batch to the summary
-            img2sum = tf.expand_dims(tf.expand_dims(self.anots[task][0,:,:],axis=-1), axis=0) # Make sure the items are synced
+            def getDepth_gt():
+                return tf.expand_dims(tf.expand_dims(self.anots[task][0,:,:],axis=-1), axis=0)
+            def getNoDepth_gt():
+                return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.uint8, name="No_Depth_gt")
+            # Put a gt image from the batch to the summary  (if exists in the batch)
+            img2sum = tf.cond(self.has_smpl[task], getDepth_gt, getNoDepth_gt)
             tf.summary.image(task + '/gt', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_gt'] = tf.squeeze(img2sum,axis = [0, 3])
 
             for othertask in self.Tasks:
                 if not othertask == task:
-                    # Put a prediction OF THE OTHER TASK from the batch to the summary
-                    img2sum = tf.boolean_mask(self.predictions[othertask], self.mask[task])
-                    img2sum = tf.expand_dims(img2sum[0, :, :, :], axis=0)
+                    def getDepth_segmentation_pred():
+                        temp = tf.boolean_mask(self.predictions[othertask], self.mask[task])
+                        return tf.expand_dims(temp[0, :, :, :], axis=0)
+                    def getNoDepth_segmentation_pred():
+                        return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Depth_segmentation_pred")
+                    # Put a prediction OF THE OTHER TASK from the batch to the summary (if exists in the batch)
+                    img2sum = tf.cond(self.has_smpl[task], getDepth_segmentation_pred, getNoDepth_segmentation_pred)
                     img2sum = tf.reshape(tf.cast(tf.argmax(img2sum, axis=-1), dtype=tf.float32),
                                          shape=[-1, self.opt.image_height, self.opt.image_width, 1])
                     tf.summary.image(task + '/pred_' + othertask, img2sum, max_outputs=1)
@@ -332,7 +363,11 @@ class MENet(object):
                     self.images2write[task + '_pred_' + othertask] = tf.squeeze(img2sum, axis=[0, 3])
 
         # Whatever the task is, put an input image from the batch to the summary
-        img2sum = tf.expand_dims(tf.boolean_mask(self.batch_images, self.mask[task])[0, :, :, :], axis=0)
+        def getOrig():
+            return tf.expand_dims(tf.boolean_mask(self.batch_images, self.mask[task])[0, :, :, :], axis=0)
+        def getNoOrig():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width, 3], dtype=tf.float32, name="No_Orig")
+        img2sum = tf.cond(self.has_smpl[task], getOrig, getNoOrig)
         tf.summary.image(task + '/input', img2sum, max_outputs=1)
         self.images2write[task + '_input'] = tf.squeeze(img2sum, axis=0)
 
@@ -353,14 +388,25 @@ class MENet(object):
     # Function dedicated to save the network
     def save(self, sess, checkpoint_dir, step):
         model_name = 'model'
-        print(" [*] Saving checkpoint to %s..." % checkpoint_dir)
         if step == 'latest':
+            print(" [*] Saving checkpoint to %s..." % checkpoint_dir)
             self.saver.save(sess,
-                            os.path.join(checkpoint_dir, model_name + '.latest'))
+                            os.path.join(checkpoint_dir, self.opt.model_name + '.latest'))
         else:
             self.saver.save(sess,
-                            os.path.join(checkpoint_dir, model_name),
+                            os.path.join(checkpoint_dir, self.opt.model_name),
                             global_step=step)
+
+    # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    # Function that prints usefull information for the user
+    def printInitialInfo(self,sess):
+        print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF)) + ") " + str(
+            self.modelNumVars))
+        pt = "Dataset of " + str(self.opt.dataset_total_num_samples) + " samples ("
+        for task in self.Tasks:
+            pt = pt + str(self.opt.dataset_num_samples[task]) + " for " + task + ", "
+        pt = pt[:-2] + ")"
+        print(pt)
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to train MENet network
@@ -386,8 +432,8 @@ class MENet(object):
                                  save_summaries_secs=0,
                                  saver=None)
 
-
         # Actually runs the session
+        with sv.managed_session(config=self.SessionConfig) as sess:
         with sv.managed_session(config=self.SessionConfig) as sess:
 
             # If found a remaining ckpt restore from this point
@@ -400,23 +446,26 @@ class MENet(object):
             if (self.opt.debug):
                 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
-            # Define the feedict
-            feeddict = {
-                self.tfph_image_paths: self.train_image_paths,
-                self.tfph_anot_paths : self.train_anot_paths,
+            # Print uselfull info for user
+            self.printInitialInfo(sess)
                 self.tfph_tasks_ids  : self.train_tasks_ids
-            }
+            # If found a remaining ckpt restore from this point
+            if (os.path.isfile(self.opt.logdir + "/model.latest.meta")):
+                print('Restoring from the latest Checkpoint')
+                self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
+                print('Done')
 
             # Define the fetches
             fetches = {
                 "train": self.train_op,
                 "global_step": self.global_step,
+                "learning_rate": self.opt.learning_rate,
                 "incr_global_step": self.incr_global_step
             }
 
-            print("(Scalar) trainable variables : (" + str(sess.run(self.modelNumDOF, feeddict)) + ") " + str(
-                self.modelNumVars))
-            for step in xrange(int(self.opt.num_steps_per_epoch * self.opt.num_epochs)):
+            for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
+                start_time = time.time()
+
                 start_time = time.time()
 
 
@@ -438,25 +487,25 @@ class MENet(object):
                     sv.summary_writer.add_summary(results["summary"], gs)
                     train_epoch = math.ceil(gs / self.opt.num_batches_per_epoch)
                     train_step = gs - (train_epoch - 1) * self.opt.num_batches_per_epoch
-                    print("Epoch: [%2d] [%5d/%5d] time: %4.4f/it" \
+                    print("Epoch: [%2d] [%5d/%5d] time: %4.2f/it learning rate: %1.6f" \
                             % (train_epoch, train_step, self.opt.num_batches_per_epoch, \
-                                time.time() - start_time))
+                                time.time() - start_time, results["learning_rate"]))
                     pt = "\t losses : "
                     for task in self.Tasks:
                         pt = pt + task + " : " + str(results["losses"][task]) + " | "
                     print(pt + "total : %.3f"%(results["loss"]))
 
                 if step % self.opt.save_model_freq == 0:
-                    self.save(sess, self.opt.logdir, 'latest')
                     self.save(sess, self.opt.logdir, gs)
+                    self.save(sess, self.opt.logdir, 'latest')
                     if self.opt.save_images:
-
                         # Check if the Images folder is setup
                         if not os.path.exists(self.opt.ImagesDirectory):
                             os.makedirs(self.opt.ImagesDirectory)
+                            os.makedirs(self.opt.ImagesDirectory)
                         # Write images prediction vs GT
                         im2write = results["images2write"]
-                        for name, img_tens in im2write.iteritems():
+                        for name, img_tens in im2write.items():
                             if len(img_tens.shape)>2:
                                 if img_tens.shape[2] == 3:
                                     img = Image.fromarray(np.uint8(255.0 * img_tens))
