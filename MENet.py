@@ -13,7 +13,7 @@ from get_class_weights import ENet_weighing, median_frequency_balancing
 from preprocessing import preprocess
 from itertools import chain
 from losses import depth_loss_nL1, segmentation_loss_wce, depth_loss_nL1_Reg
-
+from dataPreparation import datasetAsList, write_records_from_file
 
 class MENet(object):
 
@@ -33,38 +33,10 @@ class MENet(object):
     # Function dedicated to the data preparation (i.e. pure python preprocessing)
     def prepare_Data(self):
         # ===============PREPARATION FOR TRAINING==================
-        image_files = {}
-        annotation_files = {}
 
-        for task in self.Tasks:  # For each task of the network
-            # Seek for the full list of raw images
-            dataset_raw_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_raw")
-            dataset_gt_path = os.path.join(self.opt.dataset_dir, self.TaskDirs[task] + "_train_gt")
-            pngfiles = np.array([os.path.join(root, name).replace('\\','/')
-                                 for root, _, files in os.walk(dataset_raw_path, followlinks=True)
-                                 for name in files
-                                 if name.endswith(".png")])
-
-            # Check the existence of the GT file (i.e. is that an unsupervised sample or a supervised one ?!)
-            Supervised = np.array(
-                [os.path.isfile(os.path.join(dataset_gt_path, filename.split('/')[-2], filename.split('/')[-1]).replace('\\','/'))
-                 for filename in pngfiles
-                 ])
-
-            # Remove all samples that are unsupervised
-            image_files[task] = pngfiles[Supervised]
-
-            # Generate the set of annotation path accordingly
-            annotation_files[task] = np.array([
-                os.path.join(dataset_gt_path, item.split('/')[-2], item.split('/')[-1]).replace('\\','/')
-                for item in image_files[task]
-            ])
-
-            # Reorder the files by name (just for style)
-            image_files[task] = sorted(image_files[task])
-            annotation_files[task] = sorted(annotation_files[task])
-
-
+        image_files, annotation_files = datasetAsList(dataset_dir=self.opt.dataset_dir, TaskDirs=self.TaskDirs, Tasks=self.Tasks)
+        for task in self.Tasks:
+            write_records_from_file(image_files[task][0:25], annotation_files[task][0:25], self.TaskLabel[task], task, 'C:/DL/TFrec/', 3)
         # Know the number steps to take before decaying the learning rate and batches per epoch
         self.opt.dataset_num_samples = {}
         self.opt.dataset_total_num_samples = 0
