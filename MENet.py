@@ -10,10 +10,12 @@ slim = tf.contrib.slim
 
 from enet import ENetEncoder, ENetSegDecoder, ENetDepthDecoder, ENet_arg_scope
 from get_class_weights import ENet_weighing, median_frequency_balancing
-from preprocessing import preprocess
-from itertools import chain
+
+
 from losses import depth_loss_nL1, segmentation_loss_wce, depth_loss_nL1_Reg
-from dataPreparation import datasetAsList, write_records_from_file
+from dataPreparation import datasetAsList, write_records_from_file, _parse_function
+
+from functools import partial
 
 class MENet(object):
 
@@ -35,8 +37,12 @@ class MENet(object):
         # ===============PREPARATION FOR TRAINING==================
 
         image_files, annotation_files = datasetAsList(dataset_dir=self.opt.dataset_dir, TaskDirs=self.TaskDirs, Tasks=self.Tasks)
+        # TODO : add a check to verify that these haven't beeen created already
+        filelist = [f for f in os.listdir(self.opt.tf_rec_path) if f.endswith(".tfrecords")]
+        for f in filelist:
+            os.remove(os.path.join(self.opt.tf_rec_path, f))
         for task in self.Tasks:
-            write_records_from_file(image_files[task][0:25], annotation_files[task][0:25], self.TaskLabel[task], task, 'C:/DL/TFrec/', 3)
+            write_records_from_file(image_files[task], annotation_files[task], self.TaskLabel[task], task, self.opt.tf_rec_path, self.opt.num_tfreccords)
         # Know the number steps to take before decaying the learning rate and batches per epoch
         self.opt.dataset_num_samples = {}
         self.opt.dataset_total_num_samples = 0
@@ -59,36 +65,53 @@ class MENet(object):
         return image_files, annotation_files
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-    # Function dedicated to queue data loading (batches)
+    # Function dedicated to queue data and batch samples
     def load_Data(self, image_files, annotation_files):
-            # Load the files into one input queue
-            imlist = np.array(list(chain.from_iterable([image_files[task] for task in self.Tasks])))
-            images = tf.convert_to_tensor(imlist)
-            anotlist = np.array(list(chain.from_iterable([annotation_files[task] for task in self.Tasks])))
-            annotations = tf.convert_to_tensor(anotlist)
-            taskslist = np.array(
-                list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])),
-                dtype=np.uint8)
-            tasks = tf.convert_to_tensor(taskslist, dtype=tf.uint8)
+        filenames = [os.path.join(root, name).replace('\\','/')
+                             for root, _, files in os.walk(self.opt.tf_rec_path, followlinks=True)
+                             for name in files
+                             if name.endswith(".tfrecords")]
 
-            input_queue = tf.train.slice_input_producer(
-                [images, annotations, tasks])
 
-            # Decode the image and annotation raw content
-            image = tf.read_file(input_queue[0])
-            image = tf.image.decode_image(image, channels=3)
-            annotation = tf.read_file(input_queue[1])
-            task = input_queue[2]
 
-            annotation = tf.image.decode_image(annotation, channels=None, name='decode_images')
-            annotation = tf.reduce_mean(annotation, axis=2)
-            annotation = tf.expand_dims(annotation, -1)
+        dataset = tf.contrib.data.TFRecordDataset(filenames)
+        dataset = dataset.repeat(self.opt.num_epochs)
+        dataset = dataset.batch(self.opt.batch_size)
+        dataset = dataset.map(partial(_parse_function, batch_size = self.opt.batch_size))
+        iterator = dataset.make_one_shot_iterator()
+        mybatch = iterator.get_next()
+        self.batch_images = mybatch['image']
+        self.batch_annotations = mybatch['annotation']
+        self.batch_tasks = mybatch['task']
 
-            # preprocess and batch up the image & annotation
-            preprocessed_image, preprocessed_annotation = preprocess(image, annotation, self.opt.image_height, self.opt.image_width)
-
-            self.batch_images, self.batch_annotations, self.batch_tasks = tf.train.batch([preprocessed_image, preprocessed_annotation, task],
-                                                        batch_size=self.opt.batch_size, allow_smaller_final_batch=True)
+#            # Load the files into one input queue
+#            imlist = np.array(list(chain.from_iterable([image_files[task] for task in self.Tasks])))
+#            images = tf.convert_to_tensor(imlist)
+#            anotlist = np.array(list(chain.from_iterable([annotation_files[task] for task in self.Tasks])))
+#            annotations = tf.convert_to_tensor(anotlist)
+#            taskslist = np.array(
+#                list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])),
+#                dtype=np.uint8)
+#            tasks = tf.convert_to_tensor(taskslist, dtype=tf.uint8)
+#
+#            input_queue = tf.train.slice_input_producer(
+#                [images, annotations, tasks])
+#
+#            # Decode the image and annotation raw content
+#            image = tf.read_file(input_queue[0])
+#            image = tf.image.decode_image(image, channels=3)
+#            annotation = tf.read_file(input_queue[1])
+#            task = input_queue[2]
+#
+#            annotation = tf.image.decode_image(annotation, channels=None, name='decode_images')
+#            annotation = tf.reduce_mean(annotation, axis=2)
+#            annotation = tf.expand_dims(annotation, -1)
+#
+#            # preprocess and batch up the image & annotation
+#            preprocessed_image, preprocessed_annotation = preprocess(image, annotation, self.opt.image_height, self.opt.image_width)
+#
+#            self.batch_images, self.batch_annotations, self.batch_tasks = tf.train.batch([preprocessed_image, preprocessed_annotation, task],
+#                                                        batch_size=self.opt.batch_size, allow_smaller_final_batch=True)
 
 
 
