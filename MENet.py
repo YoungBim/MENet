@@ -406,9 +406,9 @@ class MENet(object):
         with sv.managed_session(config=self.SessionConfig) as sess:
 
             # If found a remaining ckpt restore from this point
-            if(os.path.isfile(self.opt.logdir + "/model.latest.meta")):
+            if(os.path.isfile(self.opt.logdir + self.opt.model_name + ".latest.meta")):
                 print('Restoring from the latest Checkpoint')
-                self.saver.restore(sess, self.opt.logdir + "model.latest")
+                self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
                 print('Done')
 
             # Activate debug when mode enabled
