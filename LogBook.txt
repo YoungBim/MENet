@@ -22,3 +22,13 @@ Segmentation + Depth Branches hash 733c21c
 
 Using one smooth reg on each branch without weighting is not working well...
 
+-----------------------------
+Segmentation + Depth Branches hash e63e047 (MUTATED)
+
+Depth loss cut-off :
+lmbd = tf.constant(5000.0, tf.float32)
+smooth = tf.multiply(compute_smooth_loss(pred), tf.constant(0.000002, tf.float32, name=task + scope + '_norm_loss'))
+
+@Train : loss = 2E-3 @250k iters (batch 7)
+@Train : depthloss = 4E-4 | segloss = 1E-3 @250k its
+@Train : runtime ~ 7 FPS (fwd+bwd, batch 7)
