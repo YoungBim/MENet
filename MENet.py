@@ -85,35 +85,6 @@ class MENet(object):
         self.batch_annotations = mybatch['annotation']
         self.batch_tasks = mybatch['task']
 
-#            # Load the files into one input queue
-#            imlist = np.array(list(chain.from_iterable([image_files[task] for task in self.Tasks])))
-#            images = tf.convert_to_tensor(imlist)
-#            anotlist = np.array(list(chain.from_iterable([annotation_files[task] for task in self.Tasks])))
-#            annotations = tf.convert_to_tensor(anotlist)
-#            taskslist = np.array(
-#                list(chain.from_iterable([np.tile(self.TaskLabel[task], len(annotation_files[task])) for task in self.Tasks])),
-#                dtype=np.uint8)
-#            tasks = tf.convert_to_tensor(taskslist, dtype=tf.uint8)
-#
-#            input_queue = tf.train.slice_input_producer(
-#                [images, annotations, tasks])
-#
-#            # Decode the image and annotation raw content
-#            image = tf.read_file(input_queue[0])
-#            image = tf.image.decode_image(image, channels=3)
-#            annotation = tf.read_file(input_queue[1])
-#            task = input_queue[2]
-#
-#            annotation = tf.image.decode_image(annotation, channels=None, name='decode_images')
-#            annotation = tf.reduce_mean(annotation, axis=2)
-#            annotation = tf.expand_dims(annotation, -1)
-#
-#            # preprocess and batch up the image & annotation
-#            preprocessed_image, preprocessed_annotation = preprocess(image, annotation, self.opt.image_height, self.opt.image_width)
-#
-#            self.batch_images, self.batch_annotations, self.batch_tasks = tf.train.batch([preprocessed_image, preprocessed_annotation, task],
-#                                                        batch_size=self.opt.batch_size, allow_smaller_final_batch=True)
-
 
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX

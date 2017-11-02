@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from scipy import misc
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def preprocess(image, batch_size, height, width, annotation=None):
     '''
     Performs preprocessing for one set of image and annotation for feeding into network.
@@ -32,6 +33,7 @@ def preprocess(image, batch_size, height, width, annotation=None):
         return image, annotation
     return image
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def datasetAsList(dataset_dir, TaskDirs, Tasks):
     '''
         Function dedicated to parse the dataset and return a list of files
@@ -66,7 +68,8 @@ def datasetAsList(dataset_dir, TaskDirs, Tasks):
             for item in image_files[task]
         ])
     return image_files, annotation_files
-#
+
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def bytes_feature(value):
     '''
     Creates a TensorFlow Record Feature with value as a byte array
@@ -75,6 +78,7 @@ def bytes_feature(value):
         value = [value]
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def int64_feature(value):
     '''
     Creates a TensorFlow Record Feature with value as a 64 bit integer.
@@ -83,6 +87,7 @@ def int64_feature(value):
         value = [value]
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def float_feature(value):
     '''
     Creates a TensorFlow Record Feature with value as a float.
@@ -91,6 +96,7 @@ def float_feature(value):
         value = [value]
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def write_record(dest_path, df):
     '''
     Writes an actual TF record from a data frame
@@ -108,6 +114,7 @@ def write_record(dest_path, df):
         writer.write(example.SerializeToString())
     writer.close()
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def read_image_to_bytestring(path):
     '''
     Reads an image from a path and converts it
@@ -119,6 +126,7 @@ def read_image_to_bytestring(path):
     img = img.astype(np.uint8)
     return img.flatten().tostring()
 
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def write_records_from_file(image_files, annotation_files, taskid, taskname, dest_folder, num_records):
     '''
     Takes a label file as a path and converts entries into a tf record
@@ -162,7 +170,6 @@ def write_records_from_file(image_files, annotation_files, taskid, taskname, des
     print('finished writing ' + taskname + ' records...')
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-#
 def _parse_features(parsed_features, batch_size = None ):
     '''
     Parse each element of the dataset and transfo
@@ -205,7 +212,7 @@ def _parse_features(parsed_features, batch_size = None ):
     result = {'image': image, 'annotation': annotation, 'task': task}
     return result
 
-
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def _parse_function(example_proto, batch_size = None):
     '''
     Function dedicated parse the features from the tf.reccord
