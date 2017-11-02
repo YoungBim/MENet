@@ -115,7 +115,8 @@ def read_image_to_bytestring(path):
     '''
     img = misc.imread(path)
     if (img.dtype == np.int32):
-        img = ((img * 255)/65535).astype(np.uint8)
+        img = ((img * 255)/65535)
+    img = img.astype(np.uint8)
     return img.flatten().tostring()
 
 def write_records_from_file(image_files, annotation_files, taskid, taskname, dest_folder, num_records):
@@ -171,26 +172,36 @@ def _parse_features(parsed_features, batch_size = None ):
         print('XXXXXXXXXXXXXXXXXXXXXXX')
     # Parse the features
     height = tf.cast(parsed_features['height'],tf.int32)
-    height.set_shape(shape=(1))
+    height.set_shape(shape=(batch_size))
     width = tf.cast(parsed_features['width'],tf.int32)
-    width.set_shape(shape=(1))
+    width.set_shape(shape=(batch_size))
     depth = tf.cast(parsed_features['depth'],tf.int32)
-    depth.set_shape(shape=(1))
-    image_shape = tf.stack([batch_size, height[0], width[0], depth[0]], name='img_shape')
-    annots_shape = tf.stack([batch_size, height[0], width[0], 1], name='annots_shape')
+    depth.set_shape(shape=(batch_size))
 
-    image = tf.decode_raw(parsed_features['image'], tf.uint8, name='decode_image')
-    image = tf.cast(image, tf.float32)
-    image = tf.reshape(image, image_shape, name='reshape_image')
 
-    annotation = tf.decode_raw(parsed_features['annotation'], tf.uint8, name='decode_annotation')
-    annotation = tf.reshape(annotation, annots_shape, name='reshape_annotation')
+    for batch_item in range(batch_size):
+        image_shape = tf.stack([1, height[batch_item], width[batch_item], depth[batch_item]], name='img_shape')
+        annots_shape = tf.stack([1, height[batch_item], width[batch_item], 1], name='annots_shape')
 
-    task = tf.cast(parsed_features['task'], tf.uint8)
-    task.set_shape(shape=(batch_size))
+        img = tf.decode_raw(parsed_features['image'][batch_item], tf.uint8, name='decode_image')
+        img = tf.cast(img, tf.float32)
+        img = tf.reshape(img, image_shape, name='reshape_image')
 
-    image, annotation = preprocess(image=image, batch_size=batch_size, width=360, height=480, annotation=annotation)
+        ant = tf.decode_raw(parsed_features['annotation'][batch_item], tf.uint8, name='decode_annotation')
+        ant = tf.reshape(ant, annots_shape, name='reshape_annotation')
 
+        task_btch = tf.cast(parsed_features['task'][batch_item], tf.uint8)
+        task_btch.set_shape(shape=())
+
+        image_btch, annotation_btch = preprocess(image=img, batch_size=1, width=480, height=360, annotation=ant)
+        if (batch_item > 0):
+            image = tf.concat([image, image_btch], axis = 0)
+            annotation = tf.concat([annotation, annotation_btch], axis = 0)
+            task = tf.concat([task, tf.reshape(task_btch,[1])], axis = 0)
+        else:
+            image = image_btch
+            annotation = annotation_btch
+            task = tf.reshape(task_btch,[1])
     result = {'image': image, 'annotation': annotation, 'task': task}
     return result
 

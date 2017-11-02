@@ -46,7 +46,7 @@ TaskLabel = {Tasks[i]: np.uint8(i) for i in range(len(Tasks))}
 # Debug/Summary/Save related opts
 flags.DEFINE_string('model_name', "MENET", 'String specifying the name of the model.')
 flags.DEFINE_integer("summary_freq", 500, "Logging every log_freq iterations")
-flags.DEFINE_integer("save_model_freq", 2000, "Logging every log_freq iterations")
+flags.DEFINE_integer("save_model_freq", 2000, "Saving the model (graph + Trainable vars) every save_model_freq iterations")
 flags.DEFINE_integer("max_model_saved", 5, "Maximum number of model saved")
 flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt images with the model")
 
