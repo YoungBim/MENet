@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from PIL import Image
+from random import shuffle
 slim = tf.contrib.slim
 
 from enet import ENetEncoder, ENetSegDecoder, ENetDepthDecoder, ENet_arg_scope
@@ -72,9 +73,9 @@ class MENet(object):
                              for name in files
                              if name.endswith(".tfrecords")]
 
-
-
+        shuffle(filenames)
         dataset = tf.contrib.data.TFRecordDataset(filenames)
+        dataset = dataset.shuffle(buffer_size=10000)
         dataset = dataset.repeat(self.opt.num_epochs)
         dataset = dataset.batch(self.opt.batch_size)
         dataset = dataset.map(partial(_parse_function, batch_size = self.opt.batch_size))
