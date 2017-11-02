@@ -66,13 +66,14 @@ def depth_loss_nL1(task, pred, anots, scope = '_L1' ):
     # Take the reduced mean of it
     loss = tf.reduce_mean(proj_error, name=task + scope + '_loss')
     # Normalize the loss so that it resembles the segmentation Loss
-    lmbd = tf.constant(5000.0, tf.float32)
-    loss = tf.divide(loss, lmbd, name=task + scope + '_norm_loss')
+    lmbd = tf.constant(0.0002, tf.float32, name=task + scope + '_lambda')
+    loss = tf.multiply(loss, lmbd, name=task + scope + '_norm_loss')
     return loss
 
 # Naive L1 depth loss + L2 Regularization Term
-def depth_loss_nL1_Reg(task, pred, anots, scope = '_regL1') :
+def depth_loss_nL1_Reg(task, pred, anots, scope='_regL1'):
     loss = depth_loss_nL1(task, pred, anots)
-    smooth = tf.multiply(compute_smooth_loss(pred), tf.constant(0.000002, tf.float32, name=task + scope + '_norm_loss'))
+    lmbd = tf.constant(0.000002, tf.float32, name=task + scope + '_lambda')
+    smooth = tf.multiply(compute_smooth_loss(pred), lmbd, name=task + scope + '_norm_loss')
     loss = tf.add(loss, smooth)
     return loss
