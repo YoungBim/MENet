@@ -22,7 +22,8 @@ flags = tf.app.flags
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('tf_rec_path', tfrecdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
-flags.DEFINE_string('num_tfreccords', 50, 'The number of TF records that are gonna be created.')
+flags.DEFINE_string('write_tfreccords', True, 'Set to true, tf.reccords are written before starting the train')
+flags.DEFINE_string('num_tfreccords', 5, 'The number of TF records that are gonna be created.')
 
 # General params
 flags.DEFINE_integer('batch_size', 3, 'The batch_size for training.')

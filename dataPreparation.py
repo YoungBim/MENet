@@ -121,10 +121,11 @@ def read_image_to_bytestring(path):
     to a flattened byte string
     '''
     img = misc.imread(path)
+    shape = img.shape
     if (img.dtype == np.int32):
         img = ((img * 255)/65535)
     img = img.astype(np.uint8)
-    return img.flatten().tostring()
+    return img.flatten().tostring(), shape
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def write_records_from_file(image_files, annotation_files, taskid, taskname, dest_folder, num_records):
@@ -135,36 +136,34 @@ def write_records_from_file(image_files, annotation_files, taskid, taskname, des
     if not os.path.exists(dest_folder):
         os.makedirs(dest_folder)
 
+    def filelistToimg_arrs(_image_files_, _annotation_files_):
+        img_arrs = {}
+        temp_reccord = [read_image_to_bytestring(path) for path in _image_files_]
+        img_arrs['image'] = [elmt[0] for elmt in temp_reccord]
+        img_arrs['height'] = [elmt[1][0] for elmt in temp_reccord]
+        img_arrs['width'] = [elmt[1][1] for elmt in temp_reccord]
+        img_arrs['depth'] = [elmt[1][2] for elmt in temp_reccord]
+        img_arrs['annotation'] = [read_image_to_bytestring(path)[0] for path in _annotation_files_]
+        img_arrs['task'] = [np.int64(taskid) for _ in range(len(_image_files_))]
+        return img_arrs
 
     start_idx = 0
     ex_per_rec = np.uint(np.ceil(len(image_files) / num_records))
     for i in range(1, num_records):
         rec_path = dest_folder + taskname + '_' + str(i) + '.tfrecords'
         # read image, flatten and then convert to a string
-        _image_files_ = image_files[start_idx:(ex_per_rec * i)]
-        _annotation_files_ = annotation_files[start_idx:(ex_per_rec * i)]
-        img_arrs = {}
-        img_arrs['height'] = [misc.imread(path).shape[0] for path in _image_files_]
-        img_arrs['width'] = [misc.imread(path).shape[1] for path in _image_files_]
-        img_arrs['depth'] = [misc.imread(path).shape[2] for path in _image_files_]
-        img_arrs['image'] = [read_image_to_bytestring(path) for path in _image_files_]
-        img_arrs['annotation'] = [read_image_to_bytestring(path) for path in _annotation_files_]
-        img_arrs['task'] = [np.int64(taskid) for _ in range(len(_image_files_))]
+        _image_files_ = image_files[int(start_idx):int(ex_per_rec * i)]
+        _annotation_files_ = annotation_files[int(start_idx):int(ex_per_rec * i)]
+        img_arrs = filelistToimg_arrs(_image_files_, _annotation_files_)
         write_record(rec_path, img_arrs)
         start_idx += ex_per_rec
         print('wrote record: ', i)
 
     # The versy last tf.reccord might be a bit smaller....
     final_rec_path = dest_folder + taskname + '_' + str(num_records) + '.tfrecords'
-    _image_files_ = image_files[start_idx:]
-    _annotation_files_ = annotation_files[start_idx:]
-    img_arrs = {}
-    img_arrs['height'] = [misc.imread(path).shape[0] for path in _image_files_]
-    img_arrs['width'] = [misc.imread(path).shape[1] for path in _image_files_]
-    img_arrs['depth'] = [misc.imread(path).shape[2] for path in _image_files_]
-    img_arrs['image'] = [read_image_to_bytestring(path) for path in _image_files_]
-    img_arrs['annotation'] = [read_image_to_bytestring(path) for path in _annotation_files_]
-    img_arrs['task'] = [np.int64(taskid) for _ in range(len(_image_files_))]
+    _image_files_ = image_files[int(start_idx):]
+    _annotation_files_ = annotation_files[int(start_idx):]
+    img_arrs = filelistToimg_arrs(_image_files_, _annotation_files_)
     write_record(final_rec_path, img_arrs)
     print('wrote record: ', num_records)
     print('finished writing ' + taskname + ' records...')

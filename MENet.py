@@ -38,12 +38,13 @@ class MENet(object):
         # ===============PREPARATION FOR TRAINING==================
 
         image_files, annotation_files = datasetAsList(dataset_dir=self.opt.dataset_dir, TaskDirs=self.TaskDirs, Tasks=self.Tasks)
-        # TODO : add a check to verify that these haven't beeen created already
-        filelist = [f for f in os.listdir(self.opt.tf_rec_path) if f.endswith(".tfrecords")]
-        for f in filelist:
-            os.remove(os.path.join(self.opt.tf_rec_path, f))
-        for task in self.Tasks:
-            write_records_from_file(image_files[task], annotation_files[task], self.TaskLabel[task], task, self.opt.tf_rec_path, self.opt.num_tfreccords)
+        # If necessary write TF reccords
+        if(self.opt.write_tfreccords):
+            filelist = [f for f in os.listdir(self.opt.tf_rec_path) if f.endswith(".tfrecords")]
+            for f in filelist:
+                os.remove(os.path.join(self.opt.tf_rec_path, f))
+            for task in self.Tasks:
+                write_records_from_file(image_files[task], annotation_files[task], self.TaskLabel[task], task, self.opt.tf_rec_path, self.opt.num_tfreccords)
         # Know the number steps to take before decaying the learning rate and batches per epoch
         self.opt.dataset_num_samples = {}
         self.opt.dataset_total_num_samples = 0
@@ -200,7 +201,6 @@ class MENet(object):
         image_files, annotation_files = self.prepare_Data()
 
         with tf.name_scope("Data"):
-
             self.load_Data(image_files, annotation_files)
 
         with tf.name_scope("Model"):
