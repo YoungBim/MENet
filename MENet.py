@@ -36,10 +36,11 @@ class MENet(object):
     # Function dedicated to the data preparation (i.e. pure python preprocessing)
     def prepare_Data(self):
         # ===============PREPARATION FOR TRAINING==================
-
         image_files, annotation_files = datasetAsList(dataset_dir=self.opt.dataset_dir, TaskDirs=self.TaskDirs, Tasks=self.Tasks)
         # If necessary write TF reccords
         if(self.opt.write_tfreccords):
+            if not os.path.exists(self.opt.tf_rec_path):
+                os.makedirs(self.opt.tf_rec_path)
             filelist = [f for f in os.listdir(self.opt.tf_rec_path) if f.endswith(".tfrecords")]
             for f in filelist:
                 os.remove(os.path.join(self.opt.tf_rec_path, f))
@@ -53,18 +54,19 @@ class MENet(object):
             self.opt.dataset_total_num_samples = self.opt.dataset_total_num_samples + self.opt.dataset_num_samples[task]
         self.opt.num_samples_per_epoch = self.opt.dataset_total_num_samples
         self.opt.num_batches_per_epoch = self.opt.num_samples_per_epoch / self.opt.batch_size
-        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
 
+        return image_files, annotation_files
+
+    # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    # Function dedicated to compute the class weighting
+    def compute_class_weight(self, annotation_files):
         # =================CLASS WEIGHTS===============================
         # Median frequency balancing class_weights
         if self.opt.weighting == "MFB":
             self.class_weights = median_frequency_balancing(annotation_files["segmentation"])
-
         # Inverse weighing probability class weights
         elif self.opt.weighting == "ENET":
             self.class_weights = ENet_weigthing(annotation_files["segmentation"])
-
-        return image_files, annotation_files
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to queue data and batch samples
@@ -197,8 +199,12 @@ class MENet(object):
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
     def build_train_graph(self):
-
+        # Get the data prepared
         image_files, annotation_files = self.prepare_Data()
+        # Compute the decay steps
+        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
+        # Compute the wieghts to apply on the classes (segmentation task)
+        self.compute_class_weight(annotation_files)
 
         with tf.name_scope("Data"):
             self.load_Data(image_files, annotation_files)
@@ -385,12 +391,6 @@ class MENet(object):
             # Print uselfull info for user
             self.printInitialInfo(sess)
 
-            # If found a remaining ckpt restore from this point
-            if (os.path.isfile(self.opt.logdir + "/model.latest.meta")):
-                print('Restoring from the latest Checkpoint')
-                self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
-                print('Done')
-
             # Define the fetches
             fetches = {
                 "train": self.train_op,
@@ -453,3 +453,59 @@ class MENet(object):
                             img_tens = np.uint8(img_tens)
                             img = Image.fromarray(img_tens)
                             img.save(os.path.join(self.opt.ImagesDirectory, str(gs) + "_" + name + ".jpeg"))
+
+    # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    # Function dedicated to evaluate MENet network
+    def evaluate(self):
+
+        self.build_train_graph()
+        self.collect_summaries()
+
+        # Count the number of trainable scalars / variables in the model
+        with tf.name_scope("ModelParamsFingerPrint"):
+            self.modelNumDOF = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) for v in tf.trainable_variables()])
+            self.modelNumVars = len(tf.trainable_variables())
+
+        # Define the saver
+        self.saver = tf.train.Saver([var for var in tf.trainable_variables()] + \
+                                    [self.global_step],
+                                    save_relative_paths=True,
+                                    max_to_keep=self.opt.max_model_saved)
+
+        # Define the session superviser
+        sv = tf.train.Supervisor(logdir=self.opt.logdir,
+                                 save_summaries_secs=0,
+                                 saver=None)
+
+        # Actually runs the session
+        with sv.managed_session(config=self.SessionConfig) as sess:
+
+            # If found a remaining ckpt restore from this point
+            if(os.path.isfile(self.opt.logdir + self.opt.model_name + ".latest.meta")):
+                print('Restoring from the latest Checkpoint')
+                self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
+                print('Done')
+
+            # Define the fetches
+            fetches = {
+                "predictions": self.pred,
+                "anotations": self.anots
+            }
+            for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
+                results = sess.run(fetches)
+                for key in results['predictions'].keys():
+                    anot = results['anotations'][key]
+                    pred = results['predictions'][key]
+
+                    if key == 'segmentation':
+                        pred = np.argmax(pred,axis=3)* 255.0/(self.opt.num_classes-1)
+                        pred = pred[:,:,:,np.newaxis]
+                        anot = anot * 255.0/(self.opt.num_classes-1)
+                    for smpl in range(results['anotations'][key].shape[0]):
+                        anot_smpl = np.take(anot,indices=smpl, axis=0)
+                        pred_smpl = np.take(np.squeeze(pred,axis=3), indices=smpl, axis=0)
+                        if smpl == 0 and step <= 2:
+                            pil_anot = Image.fromarray(np.uint8(anot_smpl))
+                            pil_pred = Image.fromarray(np.uint8(pred_smpl))
+                            pil_anot.show()
+                            pil_pred.show()

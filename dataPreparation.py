@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
-from scipy import misc
+from PIL import Image
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def preprocess(image, batch_size, height, width, annotation=None):
@@ -120,7 +120,7 @@ def read_image_to_bytestring(path):
     Reads an image from a path and converts it
     to a flattened byte string
     '''
-    img = misc.imread(path)
+    img = np.asarray(Image.open(path))
     shape = img.shape
     if (img.dtype == np.int32):
         img = ((img * 255)/65535)
@@ -192,7 +192,7 @@ def _parse_features(parsed_features, batch_size = None ):
         img = tf.decode_raw(parsed_features['image'][batch_item], tf.uint8, name='decode_image')
         img = tf.cast(img, tf.float32)
         img = tf.reshape(img, image_shape, name='reshape_image')
-
+        # Convert img from BGR to RGB and revert scale 0-255
         ant = tf.decode_raw(parsed_features['annotation'][batch_item], tf.uint8, name='decode_annotation')
         ant = tf.reshape(ant, annots_shape, name='reshape_annotation')
 

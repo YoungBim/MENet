@@ -1,5 +1,4 @@
 import tensorflow as tf
-import numpy as np
 
 def weighted_cross_entropy(onehot_labels, logits, class_weights):
     '''
