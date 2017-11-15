@@ -70,7 +70,7 @@ class MENet(object):
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to queue data and batch samples
-    def load_Data(self, image_files, annotation_files):
+    def load_Data(self):
         filenames = [os.path.join(root, name).replace('\\','/')
                              for root, _, files in os.walk(self.opt.tf_rec_path, followlinks=True)
                              for name in files
@@ -207,7 +207,7 @@ class MENet(object):
         self.compute_class_weight(annotation_files)
 
         with tf.name_scope("Data"):
-            self.load_Data(image_files, annotation_files)
+            self.load_Data()
 
         with tf.name_scope("Model"):
             self.MENet_Model()
@@ -440,7 +440,7 @@ class MENet(object):
                         for name, img_tens in im2write.items():
                             if len(img_tens.shape)>2:
                                 if img_tens.shape[2] == 3:
-                                    img = Image.fromarray(np.uint8(255.0 * img_tens))
+                                    img = Image.fromarray(np.uint8(img_tens))
                                     img.save(os.path.join(self.opt.ImagesDirectory, str(gs) + "_" + name + ".jpeg"))
                                     continue
 
