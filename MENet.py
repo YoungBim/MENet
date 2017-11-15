@@ -4,6 +4,7 @@ import time
 import math
 import numpy as np
 import tensorflow as tf
+import KPI
 from tensorflow.python import debug as tf_debug
 from PIL import Image
 from random import shuffle
@@ -184,6 +185,8 @@ class MENet(object):
                                        trainable=False)
         self.incr_global_step = tf.assign(self.global_step,
                                           self.global_step + 1)
+        # Compute the decay steps
+        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
 
         # Define your exponentially decaying learning rate
         self.opt.learning_rate = tf.train.exponential_decay(
@@ -198,13 +201,20 @@ class MENet(object):
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
-    def build_train_graph(self):
+    def build_graph(self,Mode):
+
         # Get the data prepared
         image_files, annotation_files = self.prepare_Data()
-        # Compute the decay steps
-        self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
-        # Compute the wieghts to apply on the classes (segmentation task)
-        self.compute_class_weight(annotation_files)
+
+        if Mode == 'Train':
+            # Compute the wieghts to apply on the classes (segmentation task)
+            self.compute_class_weight(annotation_files)
+        elif Mode == 'Eval':
+            self.class_weights = 0
+            pass
+        else:
+            print('Mode not found')
+            exit()
 
         with tf.name_scope("Data"):
             self.load_Data()
@@ -356,7 +366,7 @@ class MENet(object):
     # Function dedicated to train MENet network
     def train(self):
 
-        self.build_train_graph()
+        self.build_graph('Train')
         self.collect_summaries()
 
         # Count the number of trainable scalars / variables in the model
@@ -458,8 +468,7 @@ class MENet(object):
     # Function dedicated to evaluate MENet network
     def evaluate(self):
 
-        self.build_train_graph()
-        self.collect_summaries()
+        self.build_graph('Eval')
 
         # Count the number of trainable scalars / variables in the model
         with tf.name_scope("ModelParamsFingerPrint"):
@@ -477,6 +486,9 @@ class MENet(object):
                                  save_summaries_secs=0,
                                  saver=None)
 
+        # Initialize the KPI object
+        My_KPI = KPI.KPI(self.Tasks, self.opt.num_classes, 100)
+
         # Actually runs the session
         with sv.managed_session(config=self.SessionConfig) as sess:
 
@@ -485,27 +497,33 @@ class MENet(object):
                 print('Restoring from the latest Checkpoint')
                 self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
                 print('Done')
+            else:
+                print('Couldn''t restore the checkpoint')
+                quit()
 
             # Define the fetches
             fetches = {
                 "predictions": self.pred,
                 "anotations": self.anots
             }
+
+            # Get the samples processed
             for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
                 results = sess.run(fetches)
                 for key in results['predictions'].keys():
+                    # anot is the 4D tensor [batch_size, W, H, num_classes] for segmentation or [batch_size, W, H, 1] for depth
                     anot = results['anotations'][key]
                     pred = results['predictions'][key]
 
                     if key == 'segmentation':
-                        pred = np.argmax(pred,axis=3)* 255.0/(self.opt.num_classes-1)
-                        pred = pred[:,:,:,np.newaxis]
-                        anot = anot * 255.0/(self.opt.num_classes-1)
-                    for smpl in range(results['anotations'][key].shape[0]):
-                        anot_smpl = np.take(anot,indices=smpl, axis=0)
-                        pred_smpl = np.take(np.squeeze(pred,axis=3), indices=smpl, axis=0)
-                        if smpl == 0 and step <= 2:
-                            pil_anot = Image.fromarray(np.uint8(anot_smpl))
-                            pil_pred = Image.fromarray(np.uint8(pred_smpl))
-                            pil_anot.show()
-                            pil_pred.show()
+                        My_KPI.update_segKPI(anot,pred)
+                    elif key == 'depth':
+                        My_KPI.update_depthKPI(anot,pred)
+                    else:
+                        print('KPI not available for this task')
+            My_KPI.compute_KPIs(os.path.join(self.opt.logdir,'KPIs.pkl'))
+            KPIs = My_KPI.parse_KPIs(os.path.join(self.opt.logdir,'KPIs.pkl'))
+            print(KPIs)
+
+
+
