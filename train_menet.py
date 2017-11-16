@@ -22,7 +22,7 @@ flags = tf.app.flags
 flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('tf_rec_path', tfrecdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
-flags.DEFINE_string('write_tfreccords', True, 'Set to true, tf.reccords are written before starting the train')
+flags.DEFINE_string('write_tfreccords', False, 'Set to true, tf.reccords are written before starting the train')
 flags.DEFINE_string('num_tfreccords', 5, 'The number of TF records that are gonna be created.')
 
 # General params
@@ -54,7 +54,7 @@ flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt 
 # Architectural changes
 flags.DEFINE_integer('num_initial_blocks', 1, 'The number of initial blocks to use in ENet.')
 flags.DEFINE_integer('stage_two_repeat', 2, 'The number of times to repeat stage two.')
-flags.DEFINE_boolean('skip_connections', False, 'If True, perform skip connections from encoder to decoder.')
+flags.DEFINE_boolean('skip_connections', True, 'If True, perform skip connections from encoder to decoder.')
 
 # Segmentation-Task related
 flags.DEFINE_integer('num_classes', 12, 'The number of classes to predict.')

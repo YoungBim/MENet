@@ -499,7 +499,7 @@ class MENet(object):
                 print('Done')
             else:
                 print('Couldn''t restore the checkpoint')
-                quit()
+                exit()
 
             # Define the fetches
             fetches = {
@@ -511,7 +511,6 @@ class MENet(object):
             for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
                 results = sess.run(fetches)
                 for key in results['predictions'].keys():
-                    # anot is the 4D tensor [batch_size, W, H, num_classes] for segmentation or [batch_size, W, H, 1] for depth
                     anot = results['anotations'][key]
                     pred = results['predictions'][key]
 

@@ -12,7 +12,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 
 #==============INPUT ARGUMENTS==================
-logdirectory = "D:/MENet/Baseline3_0120cbc (Overfit_Test)/"
+logdirectory = "D:/MENet/Baseline2_e63e047 (depthloss modified)/"
 datasetdirectory = "./dataset_val/"
 tfrecdirectory = "./tfrec_val/"
 
@@ -23,10 +23,10 @@ flags.DEFINE_string('dataset_dir', datasetdirectory , 'The dataset directory to 
 flags.DEFINE_string('tf_rec_path', tfrecdirectory , 'The dataset directory to find the train, validation and test images.')
 flags.DEFINE_string('logdir', logdirectory, 'The log directory to save your checkpoint and event files.')
 flags.DEFINE_string('write_tfreccords', False, 'Set to true, tf.reccords are written before starting the train')
-flags.DEFINE_string('num_tfreccords', 5, 'The number of TF records that are gonna be created.')
+flags.DEFINE_string('num_tfreccords', 1, 'The number of TF records that are gonna be created.')
 
 # General params
-flags.DEFINE_integer('batch_size', 3, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 12, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
