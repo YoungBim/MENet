@@ -6,7 +6,7 @@ from PIL import Image
 # This is given by the dataset
 CityScapeClasses = \
     {
-        'unlabeled'            :  0
+        'unlabeled'             :  0
         ,'ego vehicle'          :  1
         ,'rectification border' :  2
         ,'out of roi'           :  3
@@ -86,17 +86,16 @@ LUT_citySacpes2Camvid = np.zeros(shape=[len(CityScapeClasses.keys())])
 for CityScapeKey in CityScapeClasses.keys():
     LUT_citySacpes2Camvid[CityScapeClasses[CityScapeKey]] = CamVidClasses[CityScapeKey]
 
-
+# Convert an image and write it
 def mapCityscapes2Camvid(filepath, convertPath):
     img = Image.open(filepath)
     img_array = np.array(img)
-    for i in range(img.height):
-        for j in range (img.width):
-            img_array[i][j] = LUT_citySacpes2Camvid[img_array[i][j]]
+    img_array = LUT_citySacpes2Camvid[img_array]
     filename = os.path.basename(filepath)
     img = Image.fromarray(img_array)
     img.save(os.path.join(convertPath,filename),'PNG')
 
+# Parse the image folder and run the conversion for every PNG file
 def mapCityscapeDataset(path):
     pngfiles = np.array([os.path.join(root, name).replace('\\', '/')
                          for root, _, files in os.walk(path, followlinks=False)
