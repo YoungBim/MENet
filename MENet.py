@@ -79,7 +79,7 @@ class MENet(object):
 
         shuffle(filenames)
         dataset = tf.contrib.data.TFRecordDataset(filenames)
-        dataset = dataset.shuffle(buffer_size=10000)
+        dataset = dataset.shuffle(buffer_size=500)
         dataset = dataset.repeat(self.opt.num_epochs)
         dataset = dataset.batch(self.opt.batch_size)
         dataset = dataset.map(partial(_parse_function, batch_size = self.opt.batch_size))
@@ -416,7 +416,7 @@ class MENet(object):
                     fetches["loss"] = self.total_loss
                     fetches["losses"] = self.losses
                     fetches["summary"] = sv.summary_op
-                if self.opt.save_images and step % self.opt.save_model_freq == 0:
+                if self.opt.save_images and step + 1 % self.opt.save_model_freq == 0:
                     fetches["images2write"] = self.images2write
 
 
@@ -438,7 +438,7 @@ class MENet(object):
                         pt = pt + task + " : " + str(results["losses"][task]) + " | "
                     print(pt + "total : %.3f"%(results["loss"]))
 
-                if step % self.opt.save_model_freq == 0:
+                if step + 1 % self.opt.save_model_freq == 0:
                     self.save(sess, self.opt.logdir, gs)
                     self.save(sess, self.opt.logdir, 'latest')
                     if self.opt.save_images:
