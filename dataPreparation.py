@@ -169,13 +169,11 @@ def write_records_from_file(image_files, annotation_files, taskid, taskname, des
     print('finished writing ' + taskname + ' records...')
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-def _parse_features(parsed_features, batch_size = None ):
+def _parse_features(parsed_features, batch_size):
     '''
     Parse each element of the dataset and transfo
     '''
 
-    if batch_size is None:
-        print('XXXXXXXXXXXXXXXXXXXXXXX')
     # Parse the features
     height = tf.cast(parsed_features['height'],tf.int32)
     height.set_shape(shape=(batch_size))
