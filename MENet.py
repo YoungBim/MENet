@@ -83,6 +83,8 @@ class MENet(object):
         dataset = dataset.repeat(self.opt.num_epochs)
         dataset = dataset.batch(self.opt.batch_size)
         dataset = dataset.map(partial(_parse_function, batch_size = self.opt.batch_size))
+        dataset = dataset.prefetch(5)
+
         iterator = dataset.make_one_shot_iterator()
         mybatch = iterator.get_next()
         self.batch_images = mybatch['image']
