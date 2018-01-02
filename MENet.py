@@ -133,16 +133,14 @@ class MENet(object):
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the task specific losses
     def compute_loss(self, task, pred, anots, n_smpl):
+        self.depth_smoothloss = {}
         if task == "segmentation":
-            loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
-                           lambda: segmentation_loss_wce(task, pred, anots, self.opt.num_classes, self.class_weights),
-                           lambda: tf.constant(0, dtype=tf.float32))
+            loss = segmentation_loss_wce(task, pred, anots, self.opt.num_classes, self.class_weights)
         elif task == "depth":
-            loss = tf.cond(tf.greater(n_smpl, tf.constant(0, dtype=tf.float32)),
-                           lambda: depth_loss_nL1_Reg(task, pred, anots), lambda: tf.constant(0, dtype=tf.float32))
+            self.depth_smoothloss['smooth_d1'], self.depth_smoothloss['smooth_d2'], self.depth_smoothloss['smooth_wsum'], loss = depth_loss_nL1_Reg(task, pred, anots)
         else:
             print("Please define a loss for this task")
-            loss = tf.constant(0, dtype=tf.float32)
+            loss = tf.constant(-1, dtype=tf.float32)
         return loss
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -168,8 +166,8 @@ class MENet(object):
             # Compute the loss associated to each task
             loss[task] = tf.cond(has_smpl[task], lambda: self.compute_loss(task, pred[task], anots[task], n_smpl[task]),
                         lambda: tf.constant(0, dtype=tf.float32), name=task + '_loss')
-            #loss[task] = tf.multiply(loss[task],n_smpl[task])
-            #loss[task] = tf.identity(tf.divide(loss[task],self.opt.batch_size), name = 'norm_loss_' + task)
+            loss[task] = tf.multiply(loss[task],n_smpl[task])
+            loss[task] = tf.identity(tf.divide(loss[task],self.opt.batch_size), name = 'norm_loss_' + task)
         # Collect tensors that are useful later (e.g. tf summary)
         self.mask = mask
         self.n_smpl = n_smpl
@@ -280,6 +278,29 @@ class MENet(object):
                     self.images2write[task + '_pred_' + othertask] = tf.squeeze(img2sum, axis=[0, 3])
 
         elif task == 'depth':
+
+            def getDepth_smoothloss_d1():
+                return self.depth_smoothloss['smooth_d1']
+            def getNoDepth_smoothloss_d1():
+                return tf.constant(0,dtype=tf.float32)
+            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_d1, getNoDepth_smoothloss_d1)
+            tf.summary.scalar(task + '/Loss_depth_smooth/d_1', temp)
+
+            def getDepth_smoothloss_d2():
+                return self.depth_smoothloss['smooth_d2']
+            def getNoDepth_smoothloss_d2():
+                return tf.constant(0,dtype=tf.float32)
+            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_d2, getNoDepth_smoothloss_d2)
+            tf.summary.scalar(task + '/Loss_depth_smooth/d_2', temp)
+
+            def getDepth_smoothloss_wsum():
+                return self.depth_smoothloss['smooth_wsum']
+            def getNoDepth_smoothloss_wsum():
+                return tf.constant(0,dtype=tf.float32)
+            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_wsum, getNoDepth_smoothloss_wsum)
+            tf.summary.scalar(task + '/Loss_depth_smooth/d_wsum', temp)
+
+
             def getDepth_pred():
                 return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
             def getNoDepth_pred():
