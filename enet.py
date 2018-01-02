@@ -555,6 +555,7 @@ def ENetDepthDecoder(Encoder,
              slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=None):
 
             with slim.arg_scope([bottleneck], regularizer_prob=0.1, decoder=True):
+
                 # ===================STAGE FOUR========================
                 bottleneck_scope_name = "depth" + str(bottleneck_num + 1)
 
@@ -582,6 +583,26 @@ def ENetDepthDecoder(Encoder,
                     netDepth = tf.add(netDepth, Encoder['feats_one'], name=bottleneck_scope_name + '_skip_connection')
 
                 netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, scope=bottleneck_scope_name + '_1')
+
+                # ===================ADDITIONNAL STUFF========================
+                bottleneck_scope_name = "depth" + str(bottleneck_num + 3)
+
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3,
+                                      scope=bottleneck_scope_name + '_1')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=2,
+                                      scope=bottleneck_scope_name + '_2')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=5, asymmetric=True,
+                                      scope=bottleneck_scope_name + '_3')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=4,
+                                      scope=bottleneck_scope_name + '_4')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3,
+                                      scope=bottleneck_scope_name + '_5')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=8,
+                                      scope=bottleneck_scope_name + '_6')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=5, asymmetric=True,
+                                      scope=bottleneck_scope_name + '_7')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=16,
+                                      scope=bottleneck_scope_name + '_8')
 
             # =============FINAL CONVOLUTION=============
             disparity = slim.conv2d_transpose(netDepth, 1, [2, 2], stride=2, scope='disparity')
