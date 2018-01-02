@@ -518,6 +518,7 @@ class MENet(object):
                         My_KPI.update_depthKPI(anot,pred)
                     else:
                         print('KPI not available for this task')
+                print('Eval step ' +  str(step) + ' on ' + str(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)))
             My_KPI.compute_KPIs(os.path.join(self.opt.logdir,'KPIs.pkl'))
             KPIs = My_KPI.parse_KPIs(os.path.join(self.opt.logdir,'KPIs.pkl'))
             print(KPIs)
