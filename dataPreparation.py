@@ -147,6 +147,7 @@ def write_records_from_file(image_files, annotation_files, taskid, taskname, des
         img_arrs['task'] = [np.int64(taskid) for _ in range(len(_image_files_))]
         return img_arrs
 
+    print('starting to write ' + taskname + ' records...')
     start_idx = 0
     ex_per_rec = np.uint(np.ceil(len(image_files) / num_records))
     for i in range(1, num_records):
@@ -165,8 +166,8 @@ def write_records_from_file(image_files, annotation_files, taskid, taskname, des
     _annotation_files_ = annotation_files[int(start_idx):]
     img_arrs = filelistToimg_arrs(_image_files_, _annotation_files_)
     write_record(final_rec_path, img_arrs)
-    print('wrote record: ', num_records)
-    print('finished writing ' + taskname + ' records...')
+    print(taskname + ' record: ', num_records)
+    print('finished writing ' + taskname + ' records.')
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 def _parse_features(parsed_features, batch_size):
