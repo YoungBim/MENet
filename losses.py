@@ -45,13 +45,11 @@ def compute_smooth_loss(pred_disp):
            tf.reduce_mean(tf.abs(dxdy)) + \
            tf.reduce_mean(tf.abs(dydx)) + \
            tf.reduce_mean(tf.abs(dy2))
-    ## Scale the derivatives
-    #lmbd = tf.Variable(initial_value = 0.5, dtype = tf.float32, name = 'lambda_derivative', expected_shape = [1], trainable = True)
-    #d1 = tf.multiply(d1, lmbd)
-    #d2 = tf.multiply(d2, 1.0 - lmbd)
-    derivative = d2# +d1
 
-    return derivative
+    # Scale the derivatives
+    d1 = tf.multiply(d1, tf.constant(0.5,dtype=d1.dtype))
+    d2 = tf.multiply(d2, tf.constant(0.25,dtype=d1.dtype))
+    return d1,d2
 
 # Weighted Cross entropy loss
 def segmentation_loss_wce(task, pred, anots, num_classes, class_weights):
@@ -82,7 +80,11 @@ def depth_loss_nL1(task, pred, anots, scope = '_L1' ):
 # Naive L1 depth loss + L2 Regularization Term
 def depth_loss_nL1_Reg(task, pred, anots, scope='_regL1'):
     loss = depth_loss_nL1(task, pred, anots)
-    lmbd = tf.constant(0.000004, tf.float32, name=task + scope + '_lambda')
-    smooth = tf.multiply(compute_smooth_loss(pred), lmbd, name=task + scope + '_norm_loss')
-    loss = tf.add(loss, smooth)
-    return loss
+    d1, d2 = compute_smooth_loss(pred)
+    lmbd_prop_1 = tf.constant(0.999, tf.float32, name=task + scope + '_lambda_d1')
+    lmbd_scale = tf.constant(0.000004, tf.float32, name=task + scope + '_lambda_d2')
+    smooth_d1 = tf.multiply(d1, lmbd_prop_1, name=task + scope + '_norm_loss')
+    smooth_d2 = tf.multiply(d2, 1-lmbd_prop_1, name=task + scope + '_norm_loss')
+    smooth_wsum = tf.multiply(tf.add(smooth_d1,smooth_d2), lmbd_scale)
+    loss = tf.add(loss, smooth_wsum)
+    return smooth_d1, smooth_d2, smooth_wsum, loss
