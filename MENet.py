@@ -47,6 +47,7 @@ class MENet(object):
                 os.remove(os.path.join(self.opt.tf_rec_path, f))
             for task in self.Tasks:
                 write_records_from_file(image_files[task], annotation_files[task], self.TaskLabel[task], task, self.opt.tf_rec_path, self.opt.num_tfreccords)
+            exit()
         # Know the number steps to take before decaying the learning rate and batches per epoch
         self.opt.dataset_num_samples = {}
         self.opt.dataset_total_num_samples = 0
@@ -78,7 +79,7 @@ class MENet(object):
                              if name.endswith(".tfrecords")]
 
         shuffle(filenames)
-        dataset = tf.contrib.data.TFRecordDataset(filenames)
+        dataset = tf.data.TFRecordDataset(filenames)
         dataset = dataset.shuffle(buffer_size=500)
         dataset = dataset.repeat(self.opt.num_epochs)
         dataset = dataset.batch(self.opt.batch_size)
@@ -182,11 +183,7 @@ class MENet(object):
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the loss from the inference predictions
     def Optimize(self):
-        self.global_step = tf.Variable(0,
-                                       name='global_step',
-                                       trainable=False)
-        self.incr_global_step = tf.assign(self.global_step,
-                                          self.global_step + 1)
+        self.global_step = tf.train.get_or_create_global_step()
         # Compute the decay steps
         self.opt.decay_steps = int(self.opt.num_epochs_before_decay * self.opt.num_batches_per_epoch)
 
@@ -407,8 +404,7 @@ class MENet(object):
             fetches = {
                 "train": self.train_op,
                 "global_step": self.global_step,
-                "learning_rate": self.opt.learning_rate,
-                "incr_global_step": self.incr_global_step
+                "learning_rate": self.opt.learning_rate
             }
 
             for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
@@ -418,7 +414,7 @@ class MENet(object):
                     fetches["loss"] = self.total_loss
                     fetches["losses"] = self.losses
                     fetches["summary"] = sv.summary_op
-                if self.opt.save_images and step + 1 % self.opt.save_model_freq == 0:
+                if self.opt.save_images and (step + 1) % self.opt.save_model_freq == 0:
                     fetches["images2write"] = self.images2write
 
 
@@ -440,7 +436,7 @@ class MENet(object):
                         pt = pt + task + " : " + str(results["losses"][task]) + " | "
                     print(pt + "total : %.3f"%(results["loss"]))
 
-                if step + 1 % self.opt.save_model_freq == 0:
+                if (step + 1) % self.opt.save_model_freq == 0:
                     self.save(sess, self.opt.logdir, gs)
                     self.save(sess, self.opt.logdir, 'latest')
                     if self.opt.save_images:
