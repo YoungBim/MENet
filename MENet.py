@@ -507,7 +507,11 @@ class MENet(object):
 
             # Get the samples processed
             for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
+
+                start_time = time.time()
                 results = sess.run(fetches)
+                time_per_frame_ms = int((time.time() - start_time)*1000/self.opt.batch_size)
+                print('Forward per frame ' + str(time_per_frame_ms) + ' ms')
                 for key in results['predictions'].keys():
                     anot = results['anotations'][key]
                     pred = results['predictions'][key]
