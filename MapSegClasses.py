@@ -54,7 +54,7 @@ CamVidClasses = \
         ,'ground'               : 11
         ,'road'                 : 3
         ,'sidewalk'             : 4
-        ,'parking'              : 11
+        ,'parking'              : 3
         ,'rail track'           : 11
         ,'building'             : 1
         ,'wall'                 : 1
