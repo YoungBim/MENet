@@ -26,7 +26,7 @@ flags.DEFINE_string('write_tfreccords', False, 'Set to true, tf.reccords are wri
 flags.DEFINE_string('num_tfreccords', 1, 'The number of TF records that are gonna be created.')
 
 # General params
-flags.DEFINE_integer('batch_size', 48, 'The batch_size for training.')
+flags.DEFINE_integer('batch_size', 96, 'The batch_size for training.')
 flags.DEFINE_integer('image_height', 360, "The input height of the images.")
 flags.DEFINE_integer('image_width', 480, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
