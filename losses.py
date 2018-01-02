@@ -39,7 +39,7 @@ def compute_smooth_loss(pred_disp):
     dx2, dxdy = gradient(dx)
     dydx, dy2 = gradient(dy)
     # First order derivative
-    d1 = tf.reduce_mean(dx) + tf.reduce_mean(dy)
+    d1 = tf.reduce_mean(tf.abs(dx)) + tf.reduce_mean(tf.abs(dy))
     # Second order derivative
     d2 = tf.reduce_mean(tf.abs(dx2)) + \
            tf.reduce_mean(tf.abs(dxdy)) + \
@@ -79,12 +79,12 @@ def depth_loss_nL1(task, pred, anots, scope = '_L1' ):
 
 # Naive L1 depth loss + L2 Regularization Term
 def depth_loss_nL1_Reg(task, pred, anots, scope='_regL1'):
-    loss = depth_loss_nL1(task, pred, anots)
+    n1_loss = depth_loss_nL1(task, pred, anots)
     d1, d2 = compute_smooth_loss(pred)
     lmbd_prop_1 = tf.constant(0.999, tf.float32, name=task + scope + '_lambda_d1')
-    lmbd_scale = tf.constant(0.000004, tf.float32, name=task + scope + '_lambda_d2')
+    lmbd_scale = tf.constant(1, tf.float32, name=task + scope + '_lambda_d2')
     smooth_d1 = tf.multiply(d1, lmbd_prop_1, name=task + scope + '_norm_loss')
     smooth_d2 = tf.multiply(d2, 1-lmbd_prop_1, name=task + scope + '_norm_loss')
     smooth_wsum = tf.multiply(tf.add(smooth_d1,smooth_d2), lmbd_scale)
-    loss = tf.add(loss, smooth_wsum)
-    return smooth_d1, smooth_d2, smooth_wsum, loss
+    loss = tf.add(n1_loss, smooth_wsum)
+    return smooth_d1, smooth_d2, smooth_wsum, n1_loss, loss
