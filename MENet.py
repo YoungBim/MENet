@@ -137,7 +137,7 @@ class MENet(object):
         if task == "segmentation":
             loss = segmentation_loss_wce(task, pred, anots, self.opt.num_classes, self.class_weights)
         elif task == "depth":
-            self.depth_smoothloss['smooth_d1'], self.depth_smoothloss['smooth_d2'], self.depth_smoothloss['smooth_wsum'], loss = depth_loss_nL1_Reg(task, pred, anots)
+            self.depth_smoothloss['smooth_d1'], self.depth_smoothloss['smooth_d2'], self.depth_smoothloss['smooth_wsum'], self.depth_smoothloss['n1_loss'], loss = depth_loss_nL1_Reg(task, pred, anots)
         else:
             print("Please define a loss for this task")
             loss = tf.constant(-1, dtype=tf.float32)
@@ -300,6 +300,12 @@ class MENet(object):
             temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_wsum, getNoDepth_smoothloss_wsum)
             tf.summary.scalar(task + '/Loss_depth_smooth/d_wsum', temp)
 
+            def getDepth_n1loss():
+                return self.depth_smoothloss['n1_loss']
+            def getNoDepth_n1loss():
+                return tf.constant(0,dtype=tf.float32)
+            temp = tf.cond(self.has_smpl[task], getDepth_n1loss, getNoDepth_n1loss)
+            tf.summary.scalar(task + '/Loss_depth_smooth/n1loss', temp)
 
             def getDepth_pred():
                 return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
