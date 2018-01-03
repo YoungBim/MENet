@@ -91,6 +91,7 @@ def mapCityscapes2Camvid(filepath, convertPath):
     img = Image.open(filepath)
     img_array = np.array(img)
     img_array = LUT_citySacpes2Camvid[img_array]
+    img_array = np.uint8(img_array)
     filename = os.path.basename(filepath)
     img = Image.fromarray(img_array)
     img.save(os.path.join(convertPath,filename),'PNG')
@@ -111,5 +112,5 @@ def mapCityscapeDataset(path):
     pass
 
 if __name__ == '__main__':
-    CityScapePath = 'D:/Datasets/Cityscapes/segmentation/val'
+    CityScapePath = '/media/babdallah/Disque_Bassam_ABDALLAH/Datasets/Cityscapes/segmentation/train'
     mapCityscapeDataset(CityScapePath)
