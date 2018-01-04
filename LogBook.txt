@@ -32,3 +32,11 @@ smooth = tf.multiply(compute_smooth_loss(pred), tf.constant(0.000002, tf.float32
 @Train : loss = 2E-3 @250k iters (batch 7)
 @Train : depthloss = 4E-4 | segloss = 1E-3 @250k its
 @Train : runtime ~ 7 FPS (fwd+bwd, batch 7)
+
+-----------------------------
+Segmentation + Depth Branches hash f61233f (Hybryd Loss d1/d2)
+
+lmbd_prop_1 = tf.constant(0.999, tf.float32, name=task + scope + '_lambda_d1')
+lmbd_scale = tf.constant(1, tf.float32, name=task + scope + '_lambda_d2')
+
+details on train in log_f61233f_cityscapes
