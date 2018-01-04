@@ -82,7 +82,7 @@ def depth_loss_nL1_Reg(task, pred, anots, scope='_regL1'):
     n1_loss = depth_loss_nL1(task, pred, anots)
     d1, d2 = compute_smooth_loss(pred)
     lmbd_prop_1 = tf.constant(0.999, tf.float32, name=task + scope + '_lambda_prop_d1')
-    lmbd_scale_d = tf.constant(0.001, tf.float32, name=task + scope + '_lambda_scale_d')
+    lmbd_scale_d = tf.constant(0.0001, tf.float32, name=task + scope + '_lambda_scale_d')
     smooth_d1 = tf.multiply(d1, lmbd_prop_1, name=task + scope + '_norm_loss')
     smooth_d2 = tf.multiply(d2, 1-lmbd_prop_1, name=task + scope + '_norm_loss')
     smooth_wsum = tf.multiply(tf.add(smooth_d1,smooth_d2), lmbd_scale_d)

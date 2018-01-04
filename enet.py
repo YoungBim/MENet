@@ -508,31 +508,52 @@ def ENetSegDecoder(Encoder,
              slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=None):
 
             with slim.arg_scope([bottleneck], regularizer_prob=0.1, decoder=True):
-                #===================STAGE FOUR========================
-                    bottleneck_scope_name = "bottleneck" + str(bottleneck_num + 1)
 
-                    #The decoder section, so start to upsample.
-                    netSeg = bottleneck(Encoder['features'], output_depth=64, filter_size=3, upsampling=True,
-                                     pooling_indices=Encoder['pooling_indices_2'], output_shape=Encoder['inputs_shape_2'], scope=bottleneck_scope_name+'_0')
+                # ===================Seg-Decoder STAGE 1========================
+                bottleneck_scope_name = "depth" + str(bottleneck_num + 1)
 
-                    #Perform skip connections here
-                    if skip_connections:
-                        netSeg = tf.add(netSeg, Encoder['feats_two'], name=bottleneck_scope_name+'_skip_connection')
+                netSeg = bottleneck(Encoder['features'], output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope=bottleneck_scope_name + '_2')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_3')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, dilated=True, dilation_rate=4, scope=bottleneck_scope_name + '_4')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_5')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, dilated=True, dilation_rate=8, scope=bottleneck_scope_name + '_6')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_7')
+                netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, dilated=True, dilation_rate=16, scope=bottleneck_scope_name + '_8')
 
-                    netSeg = bottleneck(netSeg, output_depth=64, filter_size=3, scope=bottleneck_scope_name+'_1')
-                    netSeg = bottleneck(netSeg, output_depth=64, filter_size=3, scope=bottleneck_scope_name+'_2')
+                # ===================Seg-Decoder STAGE 2========================
+                bottleneck_scope_name = "seg" + str(bottleneck_num + 2)
 
-                #===================STAGE FIVE========================
-                    bottleneck_scope_name = "bottleneck" + str(bottleneck_num + 2)
+                #The decoder section, so start to upsample.
+                netSeg = bottleneck(Encoder['features'], output_depth=64, filter_size=3, upsampling=True,
+                                 pooling_indices=Encoder['pooling_indices_2'], output_shape=Encoder['inputs_shape_2'], scope=bottleneck_scope_name+'_0')
 
-                    netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, upsampling=True,
-                                     pooling_indices=Encoder['pooling_indices_1'], output_shape=Encoder['inputs_shape_1'], scope=bottleneck_scope_name+'_0')
+                #Perform skip connections here
+                if skip_connections:
+                    netSeg = tf.add(netSeg, Encoder['feats_two'], name=bottleneck_scope_name+'_skip_connection')
 
-                    #perform skip connections here
-                    if skip_connections:
-                        netSeg = tf.add(netSeg, Encoder['feats_one'], name=bottleneck_scope_name+'_skip_connection')
+                netSeg = bottleneck(netSeg, output_depth=64, filter_size=3, scope=bottleneck_scope_name+'_1')
+                netSeg = bottleneck(netSeg, output_depth=64, filter_size=3, scope=bottleneck_scope_name+'_2')
 
-                    netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, scope=bottleneck_scope_name+'_1')
+                # ===================Seg-Decoder STAGE 3========================
+                bottleneck_scope_name = "seg" + str(bottleneck_num + 3)
+
+                netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, upsampling=True,
+                                 pooling_indices=Encoder['pooling_indices_1'], output_shape=Encoder['inputs_shape_1'], scope=bottleneck_scope_name+'_0')
+
+                #perform skip connections here
+                if skip_connections:
+                    netSeg = tf.add(netSeg, Encoder['feats_one'], name=bottleneck_scope_name+'_skip_connection')
+
+                netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, scope=bottleneck_scope_name+'_1')
+
+                # ===================ADDITIONNAL STUFF========================
+                bottleneck_scope_name = "seg" + str(bottleneck_num + 4)
+
+                netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, scope=bottleneck_scope_name + '_1')
+                netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, dilated=True, dilation_rate=2, scope=bottleneck_scope_name + '_2')
+                netSeg = bottleneck(netSeg, output_depth=16, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_3')
+                netSeg = bottleneck(netSeg, output_depth=16, filter_size=3, dilated=True, dilation_rate=4, scope=bottleneck_scope_name + '_4')
 
             #=============FINAL CONVOLUTION=============
             logits = slim.conv2d_transpose(netSeg, num_classes, [2,2], stride=2, scope='fullconv')
@@ -556,11 +577,24 @@ def ENetDepthDecoder(Encoder,
 
             with slim.arg_scope([bottleneck], regularizer_prob=0.1, decoder=True):
 
-                # ===================STAGE FOUR========================
+
+                # ===================Depth-Decoder STAGE 1========================
                 bottleneck_scope_name = "depth" + str(bottleneck_num + 1)
 
+                netDepth = bottleneck(Encoder['features'], output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope=bottleneck_scope_name + '_2')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_3')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, dilated=True, dilation_rate=4, scope=bottleneck_scope_name + '_4')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_5')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, dilated=True, dilation_rate=8, scope=bottleneck_scope_name + '_6')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_7')
+                netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, dilated=True, dilation_rate=16, scope=bottleneck_scope_name + '_8')
+
+                # ===================Depth-Decoder STAGE 2========================
+                bottleneck_scope_name = "depth" + str(bottleneck_num + 2)
+
                 # The decoder section, so start to upsample.
-                netDepth = bottleneck(Encoder['features'], output_depth=64, filter_size=3, upsampling=True,
+                netDepth = bottleneck(netDepth, output_depth=64, filter_size=3, upsampling=True,
                                     pooling_indices=Encoder['pooling_indices_2'], output_shape=Encoder['inputs_shape_2'],
                                     scope=bottleneck_scope_name + '_0')
 
@@ -571,8 +605,8 @@ def ENetDepthDecoder(Encoder,
                 netDepth = bottleneck(netDepth, output_depth=64, filter_size=3, scope=bottleneck_scope_name + '_1')
                 netDepth = bottleneck(netDepth, output_depth=64, filter_size=3, scope=bottleneck_scope_name + '_2')
 
-                # ===================STAGE FIVE========================
-                bottleneck_scope_name = "depth" + str(bottleneck_num + 2)
+                # ===================Depth-Decoder STAGE 3========================
+                bottleneck_scope_name = "depth" + str(bottleneck_num + 3)
 
                 netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, upsampling=True,
                                     pooling_indices=Encoder['pooling_indices_1'], output_shape=Encoder['inputs_shape_1'],
@@ -585,24 +619,12 @@ def ENetDepthDecoder(Encoder,
                 netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, scope=bottleneck_scope_name + '_1')
 
                 # ===================ADDITIONNAL STUFF========================
-                bottleneck_scope_name = "depth" + str(bottleneck_num + 3)
+                bottleneck_scope_name = "depth" + str(bottleneck_num + 4)
 
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3,
-                                      scope=bottleneck_scope_name + '_1')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=2,
-                                      scope=bottleneck_scope_name + '_2')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=5, asymmetric=True,
-                                      scope=bottleneck_scope_name + '_3')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=4,
-                                      scope=bottleneck_scope_name + '_4')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3,
-                                      scope=bottleneck_scope_name + '_5')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=8,
-                                      scope=bottleneck_scope_name + '_6')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=5, asymmetric=True,
-                                      scope=bottleneck_scope_name + '_7')
-                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=16,
-                                      scope=bottleneck_scope_name + '_8')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, scope=bottleneck_scope_name + '_1')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=2, scope=bottleneck_scope_name + '_2')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_3')
+                netDepth = bottleneck(netDepth, output_depth=16, filter_size=3, dilated=True, dilation_rate=4, scope=bottleneck_scope_name + '_4')
 
             # =============FINAL CONVOLUTION=============
             disparity = slim.conv2d_transpose(netDepth, 1, [2, 2], stride=2, scope='disparity')
