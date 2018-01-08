@@ -459,6 +459,13 @@ def ENetEncoder(inputs,
                     feats = bottleneck(feats, output_depth=128, filter_size=5, asymmetric=True, scope='bottleneck' + str(i) + '_7')
                     feats = bottleneck(feats, output_depth=128, filter_size=3, dilated=True, dilation_rate=16, scope='bottleneck' + str(i) + '_8')
 
+                    # Save for skip connection later
+                    if i == 2:
+                        if skip_connections:
+                            feats_three = feats
+                        else:
+                            feats_three = []
+
             # =================== PASS VARIABLES =======================
             # Define the set of variables that the encoder should share with other layers.
             Encoder = {}
@@ -471,6 +478,7 @@ def ENetEncoder(inputs,
             if skip_connections:
                 Encoder['feats_one'] = tf.identity(feats_one,name='Encoder_feats_one')
                 Encoder['feats_two'] = tf.identity(feats_two,name='Encoder_feats_two')
+                Encoder['feats_three'] = tf.identity(feats_three,name='Encoder_feats_three')
 
             return Encoder
 
@@ -513,7 +521,12 @@ def ENetSegDecoder(Encoder,
                 # ===================Seg-Decoder STAGE 1========================
                 bottleneck_scope_name = "depth" + str(bottleneck_num + 1)
 
-                netSeg = bottleneck(Encoder['features'], output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+                # Perform skip connections here
+                if skip_connections:
+                    netSeg = tf.add(Encoder['features'], Encoder['feats_three'], name=bottleneck_scope_name + '_skip_connection')
+                    netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+                else:
+                    netSeg = bottleneck(Encoder['features'], output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
                 netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope=bottleneck_scope_name + '_2')
                 netSeg = bottleneck(netSeg, output_depth=128, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_3')
                 netSeg = bottleneck(netSeg, output_depth=128, filter_size=3, dilated=True, dilation_rate=4, scope=bottleneck_scope_name + '_4')
@@ -582,7 +595,13 @@ def ENetDepthDecoder(Encoder,
                 # ===================Depth-Decoder STAGE 1========================
                 bottleneck_scope_name = "depth" + str(bottleneck_num + 1)
 
-                netDepth = bottleneck(Encoder['features'], output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+                # Perform skip connections here
+                if skip_connections:
+                    netDepth = tf.add(Encoder['features'], Encoder['feats_three'], name=bottleneck_scope_name + '_skip_connection')
+                    netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+                else:
+                    netDepth = bottleneck(Encoder['features'], output_depth=128, filter_size=3, scope=bottleneck_scope_name + '_1')
+
                 netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, dilated=True, dilation_rate=2, scope=bottleneck_scope_name + '_2')
                 netDepth = bottleneck(netDepth, output_depth=128, filter_size=5, asymmetric=True, scope=bottleneck_scope_name + '_3')
                 netDepth = bottleneck(netDepth, output_depth=128, filter_size=3, dilated=True, dilation_rate=4, scope=bottleneck_scope_name + '_4')
