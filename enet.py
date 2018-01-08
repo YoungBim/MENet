@@ -188,29 +188,179 @@ def bottleneck(inputs,
 
     '''
     #Calculate the depth reduction based on the projection ratio used in 1x1 convolution.
-    reduced_depth = int(inputs.get_shape().as_list()[3] / projection_ratio)
+    with tf.name_scope('bottleneck'):
+        reduced_depth = int(inputs.get_shape().as_list()[3] / projection_ratio)
 
-    with slim.arg_scope([prelu], decoder=decoder):
+        with slim.arg_scope([prelu], decoder=decoder):
 
-        #=============DOWNSAMPLING BOTTLENECK====================
-        if downsampling:
-            #=============MAIN BRANCH=============
-            #Just perform a max pooling
-            net_main, pooling_indices = tf.nn.max_pool_with_argmax(inputs,
-                                                                   ksize=[1,2,2,1],
-                                                                   strides=[1,2,2,1],
-                                                                   padding='SAME',
-                                                                   name=scope+'_main_max_pool')
+            #=============DOWNSAMPLING BOTTLENECK====================
+            if downsampling:
+                #=============MAIN BRANCH=============
+                #Just perform a max pooling
+                net_main, pooling_indices = tf.nn.max_pool_with_argmax(inputs,
+                                                                       ksize=[1,2,2,1],
+                                                                       strides=[1,2,2,1],
+                                                                       padding='SAME',
+                                                                       name=scope+'_main_max_pool')
 
-            #First get the difference in depth to pad, then pad with zeros only on the last dimension.
-            inputs_shape = inputs.get_shape().as_list()
-            depth_to_pad = abs(inputs_shape[3] - output_depth)
-            paddings = tf.convert_to_tensor([[0,0], [0,0], [0,0], [0, depth_to_pad]])
-            net_main = tf.pad(net_main, paddings=paddings, name=scope+'_main_padding')
+                #First get the difference in depth to pad, then pad with zeros only on the last dimension.
+                inputs_shape = inputs.get_shape().as_list()
+                depth_to_pad = abs(inputs_shape[3] - output_depth)
+                paddings = tf.convert_to_tensor([[0,0], [0,0], [0,0], [0, depth_to_pad]])
+                net_main = tf.pad(net_main, paddings=paddings, name=scope+'_main_padding')
 
-            #=============SUB BRANCH==============
-            #First projection that has a 2x2 kernel and stride 2
-            net = slim.conv2d(inputs, reduced_depth, [2,2], stride=2, scope=scope+'_conv1')
+                #=============SUB BRANCH==============
+                #First projection that has a 2x2 kernel and stride 2
+                net = slim.conv2d(inputs, reduced_depth, [2,2], stride=2, scope=scope+'_conv1')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
+                net = prelu(net, scope=scope+'_prelu1')
+
+                #Second conv block
+                net = slim.conv2d(net, reduced_depth, [filter_size, filter_size], scope=scope+'_conv2')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
+                net = prelu(net, scope=scope+'_prelu2')
+
+                #Final projection with 1x1 kernel
+                net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
+                net = prelu(net, scope=scope+'_prelu3')
+
+                #Regularizer
+                net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
+
+                #Finally, combine the two branches together via an element-wise addition
+                net = tf.add(net, net_main, name=scope+'_add')
+                net = prelu(net, scope=scope+'_last_prelu')
+
+                #also return inputs shape for convenience later
+                return net, pooling_indices, inputs_shape
+
+            #============DILATION CONVOLUTION BOTTLENECK====================
+            #Everything is the same as a regular bottleneck except for the dilation rate argument
+            elif dilated:
+                #Check if dilation rate is given
+                if not dilation_rate:
+                    raise ValueError('Dilation rate is not given.')
+
+                #Save the main branch for addition later
+                net_main = inputs
+
+                #First projection with 1x1 kernel (dimensionality reduction)
+                net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
+                net = prelu(net, scope=scope+'_prelu1')
+
+                #Second conv block --- apply dilated convolution here
+                net = slim.conv2d(net, reduced_depth, [filter_size, filter_size], rate=dilation_rate, scope=scope+'_dilated_conv2')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
+                net = prelu(net, scope=scope+'_prelu2')
+
+                #Final projection with 1x1 kernel (Expansion)
+                net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
+                net = prelu(net, scope=scope+'_prelu3')
+
+                #Regularizer
+                net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
+                net = prelu(net, scope=scope+'_prelu4')
+
+                #Add the main branch
+                net = tf.add(net_main, net, name=scope+'_add_dilated')
+                net = prelu(net, scope=scope+'_last_prelu')
+
+                return net
+
+            #===========ASYMMETRIC CONVOLUTION BOTTLENECK==============
+            #Everything is the same as a regular bottleneck except for a [5,5] kernel decomposed into two [5,1] then [1,5]
+            elif asymmetric:
+                #Save the main branch for addition later
+                net_main = inputs
+
+                #First projection with 1x1 kernel (dimensionality reduction)
+                net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
+                net = prelu(net, scope=scope+'_prelu1')
+
+                #Second conv block --- apply asymmetric conv here
+                net = slim.conv2d(net, reduced_depth, [filter_size, 1], scope=scope+'_asymmetric_conv2a')
+                net = slim.conv2d(net, reduced_depth, [1, filter_size], scope=scope+'_asymmetric_conv2b')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
+                net = prelu(net, scope=scope+'_prelu2')
+
+                #Final projection with 1x1 kernel
+                net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
+                net = prelu(net, scope=scope+'_prelu3')
+
+                #Regularizer
+                net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
+                net = prelu(net, scope=scope+'_prelu4')
+
+                #Add the main branch
+                net = tf.add(net_main, net, name=scope+'_add_asymmetric')
+                net = prelu(net, scope=scope+'_last_prelu')
+
+                return net
+
+            #============UPSAMPLING BOTTLENECK================
+            #Everything is the same as a regular one, except convolution becomes transposed.
+            elif upsampling:
+                #Check if pooling indices is given
+                if pooling_indices == None:
+                    raise ValueError('Pooling indices are not given.')
+
+                #Check output_shape given or not
+                if output_shape == None:
+                    raise ValueError('Output depth is not given')
+
+                #=======MAIN BRANCH=======
+                #Main branch to upsample. output shape must match with the shape of the layer that was pooled initially, in order
+                #for the pooling indices to work correctly. However, the initial pooled layer was padded, so need to reduce dimension
+                #before unpooling. In the paper, padding is replaced with convolution for this purpose of reducing the depth!
+                net_unpool = slim.conv2d(inputs, output_depth, [1,1], scope=scope+'_main_conv1')
+                net_unpool = slim.batch_norm(net_unpool, is_training=is_training, scope=scope+'batch_norm1')
+                net_unpool = unpool(net_unpool, pooling_indices, output_shape=output_shape, scope='unpool')
+
+                #======SUB BRANCH=======
+                #First 1x1 projection to reduce depth
+                net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
+                net = prelu(net, scope=scope+'_prelu1')
+
+                #Second conv block -----------------------------> NOTE: using tf.nn.conv2d_transpose for variable input shape.
+                net_unpool_shape = net_unpool.get_shape().as_list()
+                output_shape = [net_unpool_shape[0], net_unpool_shape[1], net_unpool_shape[2], reduced_depth]
+                output_shape = tf.convert_to_tensor(output_shape)
+                filter_size = [filter_size, filter_size, reduced_depth, reduced_depth]
+                filters = tf.get_variable(shape=filter_size, initializer=initializers.xavier_initializer(), dtype=tf.float32, name=scope+'_transposed_conv2_filters')
+
+                # net = slim.conv2d_transpose(net, reduced_depth, [filter_size, filter_size], stride=2, scope=scope+'_transposed_conv2')
+                net = tf.nn.conv2d_transpose(net, filter=filters, strides=[1,2,2,1], output_shape=output_shape, name=scope+'_transposed_conv2')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
+                net = prelu(net, scope=scope+'_prelu2')
+
+                #Final projection with 1x1 kernel
+                net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
+                net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm4')
+                net = prelu(net, scope=scope+'_prelu3')
+
+                #Regularizer
+                net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
+                net = prelu(net, scope=scope+'_prelu4')
+
+                #Finally, add the unpooling layer and the sub branch together
+                net = tf.add(net, net_unpool, name=scope+'_add_upsample')
+                net = prelu(net, scope=scope+'_last_prelu')
+
+                return net
+
+            #OTHERWISE, just perform a regular bottleneck!
+            #==============REGULAR BOTTLENECK==================
+            #Save the main branch for addition later
+            net_main = inputs
+
+            #First projection with 1x1 kernel
+            net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
             net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
             net = prelu(net, scope=scope+'_prelu1')
 
@@ -226,162 +376,13 @@ def bottleneck(inputs,
 
             #Regularizer
             net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
-
-            #Finally, combine the two branches together via an element-wise addition
-            net = tf.add(net, net_main, name=scope+'_add')
-            net = prelu(net, scope=scope+'_last_prelu')
-
-            #also return inputs shape for convenience later
-            return net, pooling_indices, inputs_shape
-
-        #============DILATION CONVOLUTION BOTTLENECK====================
-        #Everything is the same as a regular bottleneck except for the dilation rate argument
-        elif dilated:
-            #Check if dilation rate is given
-            if not dilation_rate:
-                raise ValueError('Dilation rate is not given.')
-
-            #Save the main branch for addition later
-            net_main = inputs
-
-            #First projection with 1x1 kernel (dimensionality reduction)
-            net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
-            net = prelu(net, scope=scope+'_prelu1')
-
-            #Second conv block --- apply dilated convolution here
-            net = slim.conv2d(net, reduced_depth, [filter_size, filter_size], rate=dilation_rate, scope=scope+'_dilated_conv2')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
-            net = prelu(net, scope=scope+'_prelu2')
-
-            #Final projection with 1x1 kernel (Expansion)
-            net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
-            net = prelu(net, scope=scope+'_prelu3')
-
-            #Regularizer
-            net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
             net = prelu(net, scope=scope+'_prelu4')
 
             #Add the main branch
-            net = tf.add(net_main, net, name=scope+'_add_dilated')
+            net = tf.add(net_main, net, name=scope+'_add_regular')
             net = prelu(net, scope=scope+'_last_prelu')
 
             return net
-
-        #===========ASYMMETRIC CONVOLUTION BOTTLENECK==============
-        #Everything is the same as a regular bottleneck except for a [5,5] kernel decomposed into two [5,1] then [1,5]
-        elif asymmetric:
-            #Save the main branch for addition later
-            net_main = inputs
-
-            #First projection with 1x1 kernel (dimensionality reduction)
-            net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
-            net = prelu(net, scope=scope+'_prelu1')
-
-            #Second conv block --- apply asymmetric conv here
-            net = slim.conv2d(net, reduced_depth, [filter_size, 1], scope=scope+'_asymmetric_conv2a')
-            net = slim.conv2d(net, reduced_depth, [1, filter_size], scope=scope+'_asymmetric_conv2b')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
-            net = prelu(net, scope=scope+'_prelu2')
-
-            #Final projection with 1x1 kernel
-            net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
-            net = prelu(net, scope=scope+'_prelu3')
-
-            #Regularizer
-            net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
-            net = prelu(net, scope=scope+'_prelu4')
-
-            #Add the main branch
-            net = tf.add(net_main, net, name=scope+'_add_asymmetric')
-            net = prelu(net, scope=scope+'_last_prelu')
-
-            return net
-
-        #============UPSAMPLING BOTTLENECK================
-        #Everything is the same as a regular one, except convolution becomes transposed.
-        elif upsampling:
-            #Check if pooling indices is given
-            if pooling_indices == None:
-                raise ValueError('Pooling indices are not given.')
-
-            #Check output_shape given or not
-            if output_shape == None:
-                raise ValueError('Output depth is not given')
-
-            #=======MAIN BRANCH=======
-            #Main branch to upsample. output shape must match with the shape of the layer that was pooled initially, in order
-            #for the pooling indices to work correctly. However, the initial pooled layer was padded, so need to reduce dimension
-            #before unpooling. In the paper, padding is replaced with convolution for this purpose of reducing the depth!
-            net_unpool = slim.conv2d(inputs, output_depth, [1,1], scope=scope+'_main_conv1')
-            net_unpool = slim.batch_norm(net_unpool, is_training=is_training, scope=scope+'batch_norm1')
-            net_unpool = unpool(net_unpool, pooling_indices, output_shape=output_shape, scope='unpool')
-
-            #======SUB BRANCH=======
-            #First 1x1 projection to reduce depth
-            net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
-            net = prelu(net, scope=scope+'_prelu1')
-
-            #Second conv block -----------------------------> NOTE: using tf.nn.conv2d_transpose for variable input shape.
-            net_unpool_shape = net_unpool.get_shape().as_list()
-            output_shape = [net_unpool_shape[0], net_unpool_shape[1], net_unpool_shape[2], reduced_depth]
-            output_shape = tf.convert_to_tensor(output_shape)
-            filter_size = [filter_size, filter_size, reduced_depth, reduced_depth]
-            filters = tf.get_variable(shape=filter_size, initializer=initializers.xavier_initializer(), dtype=tf.float32, name=scope+'_transposed_conv2_filters')
-
-            # net = slim.conv2d_transpose(net, reduced_depth, [filter_size, filter_size], stride=2, scope=scope+'_transposed_conv2')
-            net = tf.nn.conv2d_transpose(net, filter=filters, strides=[1,2,2,1], output_shape=output_shape, name=scope+'_transposed_conv2')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
-            net = prelu(net, scope=scope+'_prelu2')
-
-            #Final projection with 1x1 kernel
-            net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
-            net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm4')
-            net = prelu(net, scope=scope+'_prelu3')
-
-            #Regularizer
-            net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
-            net = prelu(net, scope=scope+'_prelu4')
-
-            #Finally, add the unpooling layer and the sub branch together
-            net = tf.add(net, net_unpool, name=scope+'_add_upsample')
-            net = prelu(net, scope=scope+'_last_prelu')
-
-            return net
-
-        #OTHERWISE, just perform a regular bottleneck!
-        #==============REGULAR BOTTLENECK==================
-        #Save the main branch for addition later
-        net_main = inputs
-
-        #First projection with 1x1 kernel
-        net = slim.conv2d(inputs, reduced_depth, [1,1], scope=scope+'_conv1')
-        net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm1')
-        net = prelu(net, scope=scope+'_prelu1')
-
-        #Second conv block
-        net = slim.conv2d(net, reduced_depth, [filter_size, filter_size], scope=scope+'_conv2')
-        net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm2')
-        net = prelu(net, scope=scope+'_prelu2')
-
-        #Final projection with 1x1 kernel
-        net = slim.conv2d(net, output_depth, [1,1], scope=scope+'_conv3')
-        net = slim.batch_norm(net, is_training=is_training, scope=scope+'_batch_norm3')
-        net = prelu(net, scope=scope+'_prelu3')
-
-        #Regularizer
-        net = spatial_dropout(net, p=regularizer_prob, seed=seed, scope=scope+'_spatial_dropout')
-        net = prelu(net, scope=scope+'_prelu4')
-
-        #Add the main branch
-        net = tf.add(net_main, net, name=scope+'_add_regular')
-        net = prelu(net, scope=scope+'_last_prelu')
-
-        return net
 
 #Now actually start building the network's Encoder
 def ENetEncoder(inputs,

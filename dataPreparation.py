@@ -23,11 +23,11 @@ def preprocess(image, batch_size, height, width, annotation=None):
         image = tf.image.convert_image_dtype(image, dtype=tf.float32)
         # image = tf.cast(image, tf.float32)
 
-    image = tf.image.resize_image_with_crop_or_pad(image, height, width)
+    image = tf.image.resize_bilinear(image, [height, width])
     image.set_shape(shape=(batch_size, height, width, 3))
 
     if not annotation == None:
-        annotation = tf.image.resize_image_with_crop_or_pad(annotation, height, width)
+        annotation = tf.image.resize_nearest_neighbor(annotation, [height, width])
         annotation.set_shape(shape=(batch_size, height, width, 1))
 
         return image, annotation
@@ -170,23 +170,23 @@ def write_records_from_file(image_files, annotation_files, taskid, taskname, des
     print('finished writing ' + taskname + ' records.')
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-def _parse_features(parsed_features, batch_size):
+def _parse_features(parsed_features, batch_size, height_desired, width_desired):
     '''
     Parse each element of the dataset and transfo
     '''
 
     # Parse the features
-    height = tf.cast(parsed_features['height'],tf.int32)
-    height.set_shape(shape=(batch_size))
-    width = tf.cast(parsed_features['width'],tf.int32)
-    width.set_shape(shape=(batch_size))
-    depth = tf.cast(parsed_features['depth'],tf.int32)
-    depth.set_shape(shape=(batch_size))
+    height_raw = tf.cast(parsed_features['height'],tf.int32)
+    height_raw.set_shape(shape=(batch_size))
+    width_raw = tf.cast(parsed_features['width'],tf.int32)
+    width_raw.set_shape(shape=(batch_size))
+    depth_raw = tf.cast(parsed_features['depth'],tf.int32)
+    depth_raw.set_shape(shape=(batch_size))
 
 
     for batch_item in range(batch_size):
-        image_shape = tf.stack([1, height[batch_item], width[batch_item], depth[batch_item]], name='img_shape')
-        annots_shape = tf.stack([1, height[batch_item], width[batch_item], 1], name='annots_shape')
+        image_shape = tf.stack([1, height_raw[batch_item], width_raw[batch_item], depth_raw[batch_item]], name='img_shape')
+        annots_shape = tf.stack([1, height_raw[batch_item], width_raw[batch_item], 1], name='annots_shape')
 
         img = tf.decode_raw(parsed_features['image'][batch_item], tf.uint8, name='decode_image')
         img = tf.cast(img, tf.float32)
@@ -198,7 +198,7 @@ def _parse_features(parsed_features, batch_size):
         task_btch = tf.cast(parsed_features['task'][batch_item], tf.uint8)
         task_btch.set_shape(shape=())
 
-        image_btch, annotation_btch = preprocess(image=img, batch_size=1, width=480, height=360, annotation=ant)
+        image_btch, annotation_btch = preprocess(image=img, batch_size=1, width=width_desired, height=height_desired, annotation=ant)
         if (batch_item > 0):
             image = tf.concat([image, image_btch], axis = 0)
             annotation = tf.concat([annotation, annotation_btch], axis = 0)
@@ -211,7 +211,7 @@ def _parse_features(parsed_features, batch_size):
     return result
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-def _parse_function(example_proto, batch_size = None):
+def _parse_function(example_proto, height_desired, width_desired, batch_size):
     '''
     Function dedicated parse the features from the tf.reccord
     '''
@@ -226,5 +226,5 @@ def _parse_function(example_proto, batch_size = None):
 
     #parsed_features = tf.parse_single_example(example_proto, features)
     parsed_features = tf.parse_example(example_proto, features)
-    processsed_features = _parse_features(parsed_features, batch_size=batch_size)
+    processsed_features = _parse_features(parsed_features, height_desired=height_desired, width_desired=width_desired, batch_size=batch_size)
     return processsed_features

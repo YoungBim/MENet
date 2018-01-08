@@ -83,7 +83,7 @@ class MENet(object):
         dataset = dataset.shuffle(buffer_size=500)
         dataset = dataset.repeat(self.opt.num_epochs)
         dataset = dataset.batch(self.opt.batch_size)
-        dataset = dataset.map(partial(_parse_function, batch_size = self.opt.batch_size))
+        dataset = dataset.map(partial(_parse_function, height_desired = self.opt.image_height, width_desired = self.opt.image_width, batch_size = self.opt.batch_size))
         dataset = dataset.prefetch(5)
 
         iterator = dataset.make_one_shot_iterator()
