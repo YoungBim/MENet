@@ -13,8 +13,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 #==============INPUT ARGUMENTS==================
 logdirectory = "./log/"
-datasetdirectory = "./dataset_val/"
-tfrecdirectory = "./tfrec_val/"
+subdataset = "val"
+datasetdirectory = "./dataset_" + subdataset + "/"
+tfrecdirectory = "./tfrec_" + subdataset + "/"
 
 flags = tf.app.flags
 
@@ -26,9 +27,9 @@ flags.DEFINE_string('write_tfreccords', False, 'Set to true, tf.reccords are wri
 flags.DEFINE_string('num_tfreccords', 1, 'The number of TF records that are gonna be created.')
 
 # General params
-flags.DEFINE_integer('batch_size', 96, 'The batch_size for training.')
-flags.DEFINE_integer('image_height', 360, "The input height of the images.")
-flags.DEFINE_integer('image_width', 480, "The input width of the images.")
+flags.DEFINE_integer('batch_size', 1, 'The batch_size for training.')
+flags.DEFINE_integer('image_height', 256, "The input height of the images.")
+flags.DEFINE_integer('image_width', 512, "The input width of the images.")
 flags.DEFINE_boolean("debug", False, "Activates tfdbg")
 
 # Training opts
@@ -54,7 +55,7 @@ flags.DEFINE_boolean("save_images", True, "Do we save an example of the pred/gt 
 # Architectural changes
 flags.DEFINE_integer('num_initial_blocks', 1, 'The number of initial blocks to use in ENet.')
 flags.DEFINE_integer('stage_two_repeat', 2, 'The number of times to repeat stage two.')
-flags.DEFINE_boolean('skip_connections', False, 'If True, perform skip connections from encoder to decoder.')
+flags.DEFINE_boolean('skip_connections', True, 'If True, perform skip connections from encoder to decoder.')
 
 # Segmentation-Task related
 flags.DEFINE_integer('num_classes', 12, 'The number of classes to predict.')

@@ -30,6 +30,7 @@ class MENet(object):
         self.opt = FLAGS
         assert (len(self.TaskDirs.values()) == len(self.Tasks))
         self.opt.ImagesDirectory = os.path.join(self.opt.logdir,'Images/')
+        self.opt.EvalDirectory = os.path.join(self.opt.logdir, 'Eval/')
         self.SessionConfig = tf.ConfigProto()
         self.SessionConfig.gpu_options.allow_growth = True
 
@@ -493,6 +494,9 @@ class MENet(object):
     # Function dedicated to evaluate MENet network
     def evaluate(self):
 
+        if not os.path.exists(self.opt.EvalDirectory):
+            os.makedirs(self.opt.EvalDirectory)
+
         self.build_graph('Eval')
 
         # Count the number of trainable scalars / variables in the model
@@ -528,9 +532,15 @@ class MENet(object):
 
             # Define the fetches
             fetches = {
-                "predictions": self.pred,
+                "predictions": self.predictions,
                 "anotations": self.anots
             }
+            if self.opt.save_images:
+                self.opt.ImagesDirectory = self.opt.EvalDirectory + 'Images/'
+                # Check if the Images folder is setup
+                if not os.path.exists(self.opt.ImagesDirectory):
+                    os.makedirs(self.opt.ImagesDirectory)
+                fetches["images"] = self.batch_images
 
             # Get the samples processed
             for step in range(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)):
@@ -539,19 +549,37 @@ class MENet(object):
                 results = sess.run(fetches)
                 time_per_frame_ms = int((time.time() - start_time)*1000/self.opt.batch_size)
                 print('Forward per frame ' + str(time_per_frame_ms) + ' ms')
+                if self.opt.save_images:
+                    raw_img = results['images']
+                    raw_img = np.uint8(np.squeeze(raw_img))
+                    img = Image.fromarray(raw_img)
+                    img.save(os.path.join(self.opt.ImagesDirectory, str(step) + "_input" + ".jpeg"))
+
                 for key in results['predictions'].keys():
                     anot = results['anotations'][key]
                     pred = results['predictions'][key]
-
                     if key == 'segmentation':
-                        My_KPI.update_segKPI(anot,pred)
+                        if anot.size:
+                            My_KPI.update_segKPI(anot,pred)
+                        pred = np.argmax(pred,axis=-1)
+                        pred = 255.0 * pred / (self.opt.num_classes - 1)
                     elif key == 'depth':
-                        My_KPI.update_depthKPI(anot,pred)
+                        if anot.size:
+                            My_KPI.update_depthKPI(anot,pred)
+                        pred = 255.0 * (pred - pred.min()) / (pred.ptp())
                     else:
                         print('KPI not available for this task')
+
+                    # Save images
+                    if self.opt.save_images:
+                        # The predicted images must be converted
+                        pred = np.uint8(np.squeeze(pred))
+                        img = Image.fromarray(pred)
+                        img.save(os.path.join(self.opt.ImagesDirectory, str(step) + "_pred_" + key + ".jpeg"))
+
                 print('Eval step ' +  str(step) + ' on ' + str(int(self.opt.num_batches_per_epoch * self.opt.num_epochs)))
-            My_KPI.compute_KPIs(os.path.join(self.opt.logdir,'KPIs.pkl'))
-            KPIs = My_KPI.parse_KPIs(os.path.join(self.opt.logdir,'KPIs.pkl'))
+            My_KPI.compute_KPIs(os.path.join(self.opt.EvalDirectory,'KPIs.pkl'))
+            KPIs = My_KPI.parse_KPIs(os.path.join(self.opt.EvalDirectory,'KPIs.pkl'))
             print(KPIs)
 
 
