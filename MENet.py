@@ -61,6 +61,30 @@ class MENet(object):
         return image_files, annotation_files
 
     # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    # Function dedicated to the data preparation (i.e. pure python preprocessing)
+    def prepare_runtimeData(self):
+        # ===============PREPARATION FOR TRAINING==================
+        image_files = {}
+
+        pngfiles = np.array([os.path.join(root, name).replace('\\', '/')
+                                 for root, _, files in os.walk(self.opt.dataset_dir, followlinks=True)
+                                 for name in files
+                                 if name.endswith(".png")])
+
+        # Reorder the files by name (just for style)
+        image_files = sorted(pngfiles)
+
+
+        # Know the number steps to take before decaying the learning rate and batches per epoch
+        self.opt.dataset_num_samples = {}
+        self.opt.dataset_total_num_samples = 0
+        self.opt.dataset_num_samples = len(image_files)
+        self.opt.dataset_total_num_samples = self.opt.dataset_total_num_samples + self.opt.dataset_num_samples
+        self.opt.num_samples_per_epoch = self.opt.dataset_total_num_samples
+        self.opt.num_batches_per_epoch = self.opt.num_samples_per_epoch / self.opt.batch_size
+
+        return image_files
+    # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     # Function dedicated to compute the class weighting
     def compute_class_weight(self, annotation_files):
         # =================CLASS WEIGHTS===============================
@@ -210,9 +234,6 @@ class MENet(object):
         elif Mode == 'Eval':
             self.class_weights = 0
             pass
-        else:
-            print('Mode not found')
-            exit()
 
         with tf.name_scope("Data"):
             self.load_Data()
@@ -583,4 +604,99 @@ class MENet(object):
             print(KPIs)
 
 
+    # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    # Function dedicated to train MENet network
+    def runtime(self):
+        if not os.path.exists(self.opt.dataset_dir):
+            os.makedirs(self.opt.dataset_dir)
 
+        self.opt.batch_size = 1
+
+        image_files = self.prepare_runtimeData()
+        self.class_weights = 0
+
+        # Define the Runtime Model
+        with tf.name_scope("Data"):
+            img = tf.placeholder(tf.float32, shape=(1, None, None, 3))
+            img = tf.cast(img, tf.float32)
+            self.batch_images = tf.image.resize_bilinear(img, [self.opt.image_height, self.opt.image_width])
+
+
+        with tf.name_scope("Model"):
+            self.MENet_Model()
+        fetches = {
+            "predictions" : self.predictions,
+            "images" : self.batch_images
+        }
+
+        # Check if the Images folder is setup
+        if not os.path.exists(self.opt.ImagesDirectory):
+            os.makedirs(self.opt.ImagesDirectory)
+
+
+        # Define the saver
+        self.saver = tf.train.Saver([var for var in tf.trainable_variables()],
+                                    save_relative_paths=True,
+                                    max_to_keep=self.opt.max_model_saved)
+
+        with tf.Session() as sess:
+            # If found a remaining ckpt restore from this point
+            if(os.path.isfile(self.opt.logdir + self.opt.model_name + ".latest.meta")):
+                print('Restoring from the latest Checkpoint')
+                self.saver.restore(sess, self.opt.logdir + self.opt.model_name + ".latest")
+                print('Done')
+            else:
+                print('Couldn''t restore the checkpoint')
+                exit()
+
+            for step in range(int(self.opt.num_batches_per_epoch)):
+                loaded_img = np.asarray(Image.open(image_files[step]))
+                loaded_img = loaded_img[np.newaxis,:]
+
+                start_time = time.time()
+                results = sess.run(fetches, feed_dict={img: loaded_img})
+                time_per_frame_ms = int((time.time() - start_time)*1000/self.opt.batch_size)
+                print('Forward per frame ' + str(time_per_frame_ms) + ' ms')
+
+                #Write the files
+                img_towrite ={}
+                img_towrite['original'] = Image.fromarray(np.uint8(np.squeeze(results['images'])))
+                img_towrite['original'].save(os.path.join(self.opt.ImagesDirectory, format(step, '05d') + "_input" + ".jpeg"))
+                for key in results['predictions'].keys():
+                    pred = results['predictions'][key]
+                    if key == 'segmentation':
+                        pred = np.argmax(pred,axis=-1)
+                        pred = 255.0 * pred / (self.opt.num_classes - 1)
+                    elif key == 'depth':
+                        pred = 255.0 * pred / (pred.ptp())
+
+                    def ColorMaps(img_PIL, colormap):
+                        import matplotlib.pyplot as mpl
+                        colormap = mpl.cm.get_cmap(colormap)
+                        img_src = img_PIL.convert('L')
+                        im = np.array(img_src)
+                        im = colormap(im)
+                        im = np.uint8(im * 255)
+                        im = im[:, :, :3]
+                        return Image.fromarray(im)
+
+                    # The predicted images must be converted
+                    pred = np.uint8(np.squeeze(pred))
+                    img_towrite[key] = Image.fromarray(pred)
+                    if key == 'depth':
+                        maptype = 'gnuplot2'
+                    if key == 'segmentation':
+                        maptype = 'rainbow'
+
+                    img_towrite[key]=ColorMaps(img_towrite[key],maptype)
+                    img_towrite[key].save(os.path.join(self.opt.ImagesDirectory, format(step, '05d') + "_pred_" + key + ".jpeg"))
+
+                # Concatenation
+                for key in img_towrite.keys():
+                    img_towrite[key] = np.array(img_towrite[key])
+                concatenate = np.zeros([2*self.opt.image_height, 2*self.opt.image_width, 3], dtype=img_towrite['original'].dtype)
+                concatenate[:self.opt.image_height, np.int(self.opt.image_width/2):np.int(self.opt.image_width/2+self.opt.image_width), :] = img_towrite['original']
+                concatenate[self.opt.image_height:, :self.opt.image_width, :] = img_towrite['depth']
+                concatenate[self.opt.image_height:, self.opt.image_width:, :] = img_towrite['segmentation']
+                concatenate=Image.fromarray(concatenate)
+                concatenate.save(os.path.join(self.opt.ImagesDirectory, format(step, '05d') + "_merged.jpeg"))

@@ -11,6 +11,9 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0"
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 
+# Activate to get the runtime model
+Runtime = True
+
 #==============INPUT ARGUMENTS==================
 logdirectory = "./log/"
 subdataset = "val"
@@ -74,7 +77,10 @@ def main(_):
         os.makedirs(FLAGS.logdir)
 
     My_MENet = MENet(FLAGS, Tasks, TaskDirs, TaskLabel)
-    My_MENet.evaluate()
+    if Runtime:
+        My_MENet.runtime()
+    else:
+        My_MENet.evaluate()
 
 if __name__ == '__main__':
     tf.app.run()
