@@ -684,9 +684,9 @@ class MENet(object):
                     pred = np.uint8(np.squeeze(pred))
                     img_towrite[key] = Image.fromarray(pred)
                     if key == 'depth':
-                        maptype = 'gnuplot2'
+                        maptype = 'magma'
                     if key == 'segmentation':
-                        maptype = 'rainbow'
+                        maptype = 'plasma'
 
                     img_towrite[key]=ColorMaps(img_towrite[key],maptype)
                     img_towrite[key].save(os.path.join(self.opt.ImagesDirectory, format(step, '05d') + "_pred_" + key + ".jpeg"))
