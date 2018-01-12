@@ -3,7 +3,7 @@ import os
 from PIL import Image
 
 
-# This is given by the dataset
+# This is given by the dataset (https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/helpers/labels.py)
 CityScapeClasses = \
     {
         'unlabeled'             :  0
@@ -81,36 +81,79 @@ CamVidClasses = \
         ,'bicycle'              : 10
     }
 
-# Build the LUT CityScapes -> CamVid
-LUT_citySacpes2Camvid = np.zeros(shape=[len(CityScapeClasses.keys())])
-for CityScapeKey in CityScapeClasses.keys():
-    LUT_citySacpes2Camvid[CityScapeClasses[CityScapeKey]] = CamVidClasses[CityScapeKey]
-
+# Groups
+CityscapesGroups = \
+    {
+        'unlabeled'             : 7
+        ,'ego vehicle'          : 7
+        ,'rectification border' : 7
+        ,'out of roi'           : 7
+        ,'static'               : 7
+        ,'dynamic'              : 7
+        ,'ground'               : 7
+        ,'road'                 : 4
+        ,'sidewalk'             : 4
+        ,'parking'              : 4
+        ,'rail track'           : 4
+        ,'building'             : 1
+        ,'wall'                 : 1
+        ,'fence'                : 1
+        ,'guard rail'           : 1
+        ,'bridge'               : 1
+        ,'tunnel'               : 1
+        ,'pole'                 : 2
+        ,'polegroup'            : 2
+        ,'traffic light'        : 2
+        ,'traffic sign'         : 2
+        ,'vegetation'           : 3
+        ,'terrain'              : 3
+        ,'sky'                  : 0
+        ,'person'               : 5
+        ,'rider'                : 5
+        ,'car'                  : 6
+        ,'truck'                : 6
+        ,'bus'                  : 6
+        ,'caravan'              : 6
+        ,'trailer'              : 6
+        ,'train'                : 6
+        ,'motorcycle'           : 6
+        ,'bicycle'              : 6
+    }
+def BuildLUT(LutName):
+    # Build the LUT CityScapes -> CamVid
+    LUT = np.zeros(shape=[len(CityScapeClasses.keys())])
+    for CityScapeKey in CityScapeClasses.keys():
+        if LutName == 'CamVid':
+            LUT[CityScapeClasses[CityScapeKey]] = CamVidClasses[CityScapeKey]
+        elif LutName == 'Groups':
+            LUT[CityScapeClasses[CityScapeKey]] = CityscapesGroups[CityScapeKey]
+    return LUT
 # Convert an image and write it
-def mapCityscapes2Camvid(filepath, convertPath):
+def mapCityscapes2LUT(filepath, convertPath, LUT):
     img = Image.open(filepath)
     img_array = np.array(img)
-    img_array = LUT_citySacpes2Camvid[img_array]
+    img_array = LUT[img_array]
     img_array = np.uint8(img_array)
     filename = os.path.basename(filepath)
     img = Image.fromarray(img_array)
     img.save(os.path.join(convertPath,filename),'PNG')
 
 # Parse the image folder and run the conversion for every PNG file
-def mapCityscapeDataset(path):
+def mapCityscapeDataset(path, LutName):
     pngfiles = np.array([os.path.join(root, name).replace('\\', '/')
                          for root, _, files in os.walk(path, followlinks=False)
                          for name in files
                          if name.endswith(".png")])
 
-    convertPath = path+'_CamvidLabs'
+    convertPath = path+'_'+ LutName
     if not os.path.exists(convertPath):
         os.makedirs(convertPath)
 
+    LUT = BuildLUT(LutName)
     for filepath in pngfiles:
-        mapCityscapes2Camvid(filepath, convertPath)
+        mapCityscapes2LUT(filepath, convertPath, LUT)
     pass
 
 if __name__ == '__main__':
-    CityScapePath = '/media/babdallah/Disque_Bassam_ABDALLAH/Datasets/Cityscapes/segmentation/train'
-    mapCityscapeDataset(CityScapePath)
+    CityScapePath = 'D:/Datasets/Cityscapes/segmentation/train'
+    mapCityscapeDataset(CityScapePath,'Groups')
