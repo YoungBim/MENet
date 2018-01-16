@@ -666,18 +666,37 @@ class MENet(object):
                     pred = results['predictions'][key]
                     if key == 'segmentation':
                         pred = np.argmax(pred,axis=-1)
-                        pred = 255.0 * pred / (self.opt.num_classes - 1)
                     elif key == 'depth':
                         pred = 255.0 * pred / (pred.ptp())
 
                     def ColorMaps(img_PIL, colormap):
                         import matplotlib.pyplot as mpl
-                        colormap = mpl.cm.get_cmap(colormap)
+
+                        if colormap == '':
+                            cmap = np.zeros(shape=[12,3], dtype=np.uint8)
+                            cmap[0] = [130, 140, 255]  # Sky
+                            cmap[1] = [192, 192, 192]  # Buildings
+                            cmap[2] = [64, 64, 64]  # Poles
+                            cmap[3] = [96, 96, 96]  # Road
+                            cmap[4] = [128, 128, 128]  # Sidewalk
+                            cmap[5] = [100, 185, 90]  # Vegetation
+                            cmap[6] = [255, 255, 255]  # Signs
+                            cmap[7] = [160, 150, 200]  # GuardRail
+                            cmap[8] = [0, 0, 255]  # Vehicle
+                            cmap[9] = [255, 0, 0]  # Humans
+                            cmap[10] = [255, 0, 255]  # Cycles
+                            cmap[11] = [0,0,0] #Unclassified
+                        else :
+                            cmap = mpl.cm.get_cmap(colormap)
+
                         img_src = img_PIL.convert('L')
                         im = np.array(img_src)
-                        im = colormap(im)
-                        im = np.uint8(im * 255)
-                        im = im[:, :, :3]
+                        if colormap == '':
+                            im = cmap[im]
+                        else :
+                            im = cmap(im)
+                            im = np.uint8(im * 255)
+                            im = im[:, :, :3]
                         return Image.fromarray(im)
 
                     # The predicted images must be converted
@@ -686,7 +705,7 @@ class MENet(object):
                     if key == 'depth':
                         maptype = 'magma'
                     if key == 'segmentation':
-                        maptype = 'plasma'
+                        maptype = ''
 
                     img_towrite[key]=ColorMaps(img_towrite[key],maptype)
                     img_towrite[key].save(os.path.join(self.opt.ImagesDirectory, format(step, '05d') + "_pred_" + key + ".jpeg"))
