@@ -155,5 +155,5 @@ def mapCityscapeDataset(path, LutName):
     pass
 
 if __name__ == '__main__':
-    CityScapePath = 'D:/Datasets/Cityscapes/segmentation/train'
-    mapCityscapeDataset(CityScapePath,'Groups')
+    CityScapePath = '/mnt/fast_ssd_dnn/bassam/Datasets/dataset_cityscapescoarse/segmentation/train'
+    mapCityscapeDataset(CityScapePath,'CamVid')
