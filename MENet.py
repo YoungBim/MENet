@@ -256,15 +256,30 @@ class MENet(object):
         # Display the #of smples / batch in the summary
         tf.summary.scalar(task + '/Samples', self.n_smpl[task])
 
+        def getNoImage_1WHC_f32():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Sample")
+
+        def getNoImage_1WH3_f32():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width, 3], dtype=tf.float32, name="No_Sample")
+
+        def getNoImage_1WH1_f32():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Sample")
+
+        def getNoImage_1WH_u8():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width], dtype=tf.uint8, name="No_Sample")
+
+        def getNoImage_1WH1_u8():
+            return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.uint8, name="No_Sample")
+
+        def getNoScalar():
+            return tf.constant(0,dtype=tf.float32)
 
         # Task-Dependent summaries
         if task == 'segmentation':
             def getSegmentation_pred():
                 return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
-            def getNoSegmentation_pred():
-                return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Segmentation")
             # Put a prediction from the batch to the summary (if exists in the batch)
-            img2sum = tf.cond(self.has_smpl[task], getSegmentation_pred, getNoSegmentation_pred)
+            img2sum = tf.cond(self.has_smpl[task], getSegmentation_pred, getNoImage_1WHC_f32)
             img2sum = tf.reshape(tf.cast(tf.argmax(img2sum, axis=-1), dtype=tf.float32),
                                  shape=[-1, self.opt.image_height, self.opt.image_width, 1])
             tf.summary.image(task + '/pred', img2sum, max_outputs=1)
@@ -273,10 +288,9 @@ class MENet(object):
 
             def getSegmentation_gt():
                 return tf.expand_dims(self.anots[task][0, :, :], axis=0)
-            def getNoSegmentation_gt():
-                return tf.zeros([1, self.opt.image_height, self.opt.image_width], dtype=tf.uint8, name="No_Segmentation_gt")
+
             # Put a gt from the batch to the summary (if exists in the batch)
-            img2sum = tf.cond(self.has_smpl[task], getSegmentation_gt, getNoSegmentation_gt)
+            img2sum = tf.cond(self.has_smpl[task], getSegmentation_gt, getNoImage_1WH_u8)
             img2sum = tf.cast(
                 tf.reshape(tf.cast(img2sum, dtype=tf.float32),
                            shape=[-1, self.opt.image_height, self.opt.image_width, 1]),
@@ -290,10 +304,9 @@ class MENet(object):
                     def getSegmentation_depth_pred():
                         temp = tf.boolean_mask(self.predictions[othertask], self.mask[task])
                         return tf.expand_dims(temp[0, :, :, :], axis=0)
-                    def getNoSegmentation_depth_pred():
-                        return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Segmentation_depth_pred")
+
                     # Put a prediction OF THE OTHER TASK from the batch to the summary
-                    img2sum = tf.cond(self.has_smpl[task], getSegmentation_depth_pred, getNoSegmentation_depth_pred)
+                    img2sum = tf.cond(self.has_smpl[task], getSegmentation_depth_pred, getNoImage_1WH1_f32)
                     # Put a prediction OF THE OTHER TASK from the batch to the summary (if exists in the batch)
                     tf.summary.image(task + '/pred_' + othertask, img2sum, max_outputs=1)
                     # Save the images to be written later
@@ -303,48 +316,36 @@ class MENet(object):
 
             def getDepth_smoothloss_d1():
                 return self.depth_smoothloss['smooth_d1']
-            def getNoDepth_smoothloss_d1():
-                return tf.constant(0,dtype=tf.float32)
-            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_d1, getNoDepth_smoothloss_d1)
+            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_d1, getNoScalar)
             tf.summary.scalar(task + '/Loss_depth_smooth/d_1', temp)
 
             def getDepth_smoothloss_d2():
                 return self.depth_smoothloss['smooth_d2']
-            def getNoDepth_smoothloss_d2():
-                return tf.constant(0,dtype=tf.float32)
-            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_d2, getNoDepth_smoothloss_d2)
+            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_d2, getNoScalar)
             tf.summary.scalar(task + '/Loss_depth_smooth/d_2', temp)
 
             def getDepth_smoothloss_wsum():
                 return self.depth_smoothloss['smooth_wsum']
-            def getNoDepth_smoothloss_wsum():
-                return tf.constant(0,dtype=tf.float32)
-            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_wsum, getNoDepth_smoothloss_wsum)
+            temp = tf.cond(self.has_smpl[task], getDepth_smoothloss_wsum, getNoScalar)
             tf.summary.scalar(task + '/Loss_depth_smooth/d_wsum', temp)
 
             def getDepth_n1loss():
                 return self.depth_smoothloss['n1_loss']
-            def getNoDepth_n1loss():
-                return tf.constant(0,dtype=tf.float32)
-            temp = tf.cond(self.has_smpl[task], getDepth_n1loss, getNoDepth_n1loss)
+            temp = tf.cond(self.has_smpl[task], getDepth_n1loss, getNoScalar)
             tf.summary.scalar(task + '/Loss_depth_smooth/n1loss', temp)
 
             def getDepth_pred():
                 return tf.expand_dims(self.pred[task][0, :, :, :], axis=0)
-            def getNoDepth_pred():
-                return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.float32, name="No_Depth")
             # Put a prediction image from the batch to the summary  (if exists in the batch)
-            img2sum = tf.cond(self.has_smpl[task], getDepth_pred, getNoDepth_pred)
+            img2sum = tf.cond(self.has_smpl[task], getDepth_pred, getNoImage_1WH1_f32)
             tf.summary.image(task + '/pred', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_pred']  = tf.squeeze(img2sum,axis = [0, 3])
 
             def getDepth_gt():
                 return tf.expand_dims(tf.expand_dims(self.anots[task][0,:,:],axis=-1), axis=0)
-            def getNoDepth_gt():
-                return tf.zeros([1, self.opt.image_height, self.opt.image_width, 1], dtype=tf.uint8, name="No_Depth_gt")
             # Put a gt image from the batch to the summary  (if exists in the batch)
-            img2sum = tf.cond(self.has_smpl[task], getDepth_gt, getNoDepth_gt)
+            img2sum = tf.cond(self.has_smpl[task], getDepth_gt, getNoImage_1WH1_u8)
             tf.summary.image(task + '/gt', img2sum, max_outputs=1)
             # Save the images to be written later
             self.images2write[task + '_gt'] = tf.squeeze(img2sum,axis = [0, 3])
@@ -354,10 +355,8 @@ class MENet(object):
                     def getDepth_segmentation_pred():
                         temp = tf.boolean_mask(self.predictions[othertask], self.mask[task])
                         return tf.expand_dims(temp[0, :, :, :], axis=0)
-                    def getNoDepth_segmentation_pred():
-                        return tf.zeros([1, self.opt.image_height, self.opt.image_width, self.opt.num_classes], dtype=tf.float32, name="No_Depth_segmentation_pred")
                     # Put a prediction OF THE OTHER TASK from the batch to the summary (if exists in the batch)
-                    img2sum = tf.cond(self.has_smpl[task], getDepth_segmentation_pred, getNoDepth_segmentation_pred)
+                    img2sum = tf.cond(self.has_smpl[task], getDepth_segmentation_pred, getNoImage_1WHC_f32)
                     img2sum = tf.reshape(tf.cast(tf.argmax(img2sum, axis=-1), dtype=tf.float32),
                                          shape=[-1, self.opt.image_height, self.opt.image_width, 1])
                     tf.summary.image(task + '/pred_' + othertask, img2sum, max_outputs=1)
@@ -367,9 +366,7 @@ class MENet(object):
         # Whatever the task is, put an input image from the batch to the summary
         def getOrig():
             return tf.expand_dims(tf.boolean_mask(self.batch_images, self.mask[task])[0, :, :, :], axis=0)
-        def getNoOrig():
-            return tf.zeros([1, self.opt.image_height, self.opt.image_width, 3], dtype=tf.float32, name="No_Orig")
-        img2sum = tf.cond(self.has_smpl[task], getOrig, getNoOrig)
+        img2sum = tf.cond(self.has_smpl[task], getOrig, getNoImage_1WH3_f32)
         tf.summary.image(task + '/input', img2sum, max_outputs=1)
         self.images2write[task + '_input'] = tf.squeeze(img2sum, axis=0)
 
